@@ -1,0 +1,12 @@
+{% autoescape off %}Hola {{ username }},
+
+Tu código para verificar el Hub de BeatLab es:
+
+  {{ otp }}
+
+Caduca en {{ minutes }} minutos. No lo compartas con nadie.
+Si no solicitaste este registro, ignora este correo.
+
+BeatLab Hub · NynuSoft
+{{ site_url }}
+{% endautoescape %}

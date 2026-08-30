@@ -38,6 +38,7 @@ EMAIL_USE_TLS=false
 EMAIL_HOST_USER=info@nynusoft.com
 EMAIL_HOST_PASSWORD=
 DEFAULT_FROM_EMAIL=BeatLab Hub <info@nynusoft.com>
+PUBLIC_SITE_URL=https://hub.nynusoft.com
 IMAP_HOST=imap.hostinger.com
 IMAP_PORT=993
 EOF

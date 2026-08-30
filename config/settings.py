@@ -120,6 +120,15 @@ DEFAULT_FROM_EMAIL = os.environ.get(
     "DEFAULT_FROM_EMAIL",
     "BeatLab Hub <info@nynusoft.com>",
 )
+PUBLIC_SITE_URL = os.environ.get("PUBLIC_SITE_URL", "https://hub.nynusoft.com").rstrip(
+    "/"
+)
+# PNG del wordmark + corazón (Gmail/Outlook no pintan SVG ni el heartbeat CSS).
+# /static/ tras collectstatic; /brand/ tras el build del frontend.
+EMAIL_LOGO_URL = os.environ.get(
+    "EMAIL_LOGO_URL",
+    f"{PUBLIC_SITE_URL}/static/hub/email-logo.png",
+)
 SERVER_EMAIL = os.environ.get("SERVER_EMAIL", EMAIL_HOST_USER or "info@nynusoft.com")
 EMAIL_TIMEOUT = int(os.environ.get("EMAIL_TIMEOUT", "20"))
 EMAIL_BACKEND = os.environ.get(
