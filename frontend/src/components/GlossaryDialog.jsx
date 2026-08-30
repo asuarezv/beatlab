@@ -99,11 +99,13 @@ export default function GlossaryDialog({ entry, open, onClose }) {
               {entry.examplesLabel ? (
                 <p className="glossary-examples-label">{entry.examplesLabel}</p>
               ) : null}
-              <ul className="glossary-examples">
+              <div className="glossary-examples">
                 {entry.examples.map((item) => (
-                  <li key={item}>{item}</li>
+                  <p key={item}>
+                    <em>{item}</em>
+                  </p>
                 ))}
-              </ul>
+              </div>
             </>
           ) : null}
         </div>

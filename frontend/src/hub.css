@@ -564,12 +564,16 @@ button.glossary-term:focus-visible {
 
 .glossary-examples {
   margin: 0;
-  padding-left: 1.2rem;
+  padding: 0;
   color: var(--muted);
   line-height: 1.55;
 }
 
-.glossary-examples li + li {
+.glossary-examples p {
+  margin: 0;
+}
+
+.glossary-examples p + p {
   margin-top: 0.2rem;
 }
 
