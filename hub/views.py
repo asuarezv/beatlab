@@ -1,8 +1,6 @@
 import json
 
 from django.contrib.auth import authenticate, get_user_model, login, logout
-from django.contrib.auth.password_validation import validate_password
-from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.http import JsonResponse
 from django.middleware.csrf import get_token
@@ -15,6 +13,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from .models import Beat, BeatType, Company, Operator, System
+from .otp import consume_signup_otp, issue_signup_otp, validate_signup_fields
 from .quota import (
     assert_can_consume_beat,
     assert_company_writable,
@@ -114,36 +113,63 @@ def login_view(request):
 
 
 @require_POST
-def register_view(request):
+def register_start(request):
     data = _json_body(request)
     if data is None:
         return JsonResponse({"detail": "JSON inválido"}, status=400)
-    company_name = (data.get("company_name") or "").strip()
-    username = (data.get("username") or "").strip()
-    email = (data.get("email") or "").strip()
-    password = (data.get("password") or "").strip()
-    password2 = (data.get("password2") or "").strip()
-    if not company_name or not username or not password:
-        return JsonResponse({"detail": "Empresa, usuario y contraseña son obligatorios."}, status=400)
-    if password != password2:
-        return JsonResponse({"detail": "Las contraseñas no coinciden."}, status=400)
-    if User.objects.filter(username__iexact=username).exists():
-        return JsonResponse({"detail": "Ese usuario ya está en uso."}, status=400)
     try:
-        validate_password(password)
-    except DjangoValidationError as exc:
-        return JsonResponse({"detail": " ".join(exc.messages)}, status=400)
+        company_name, username, email, password = validate_signup_fields(
+            company_name=data.get("company_name"),
+            username=data.get("username"),
+            email=data.get("email"),
+            password=data.get("password"),
+            password2=data.get("password2"),
+        )
+        result = issue_signup_otp(
+            company_name=company_name,
+            username=username,
+            email=email,
+            password=password,
+        )
+    except ValueError as exc:
+        return JsonResponse({"detail": str(exc)}, status=400)
+    return JsonResponse(result)
+
+
+@require_POST
+def register_verify(request):
+    data = _json_body(request)
+    if data is None:
+        return JsonResponse({"detail": "JSON inválido"}, status=400)
+    try:
+        challenge = consume_signup_otp(
+            email=data.get("email"),
+            otp=data.get("otp"),
+        )
+    except ValueError as exc:
+        return JsonResponse({"detail": str(exc)}, status=400)
 
     with transaction.atomic():
-        company = Company.objects.create(name=company_name, slug=_unique_company_slug(company_name))
+        if User.objects.filter(username__iexact=challenge.username).exists():
+            challenge.delete()
+            return JsonResponse({"detail": "Ese usuario ya está en uso."}, status=400)
+        if User.objects.filter(email__iexact=challenge.email).exists():
+            challenge.delete()
+            return JsonResponse({"detail": "Ese correo ya está en uso."}, status=400)
+        company = Company.objects.create(
+            name=challenge.company_name,
+            slug=_unique_company_slug(challenge.company_name),
+        )
         grant_demo(company)
-        user = User.objects.create_user(
-            username=username,
-            password=password,
-            email=email,
+        user = User(
+            username=challenge.username,
+            email=challenge.email,
             is_staff=True,
         )
+        user.password = challenge.password_hash
+        user.save()
         ensure_membership(user, company)
+        challenge.delete()
 
     login(request, user, backend="django.contrib.auth.backends.ModelBackend")
     request.session["company_id"] = company.id

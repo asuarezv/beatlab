@@ -107,3 +107,26 @@ REST_FRAMEWORK = {
         "rest_framework.permissions.IsAuthenticated",
     ],
 }
+
+EMAIL_HOST = os.environ.get("EMAIL_HOST", "smtp.hostinger.com").strip()
+EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "465"))
+EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "info@nynusoft.com").strip()
+EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "").strip()
+EMAIL_USE_SSL = os.environ.get("EMAIL_USE_SSL", "true").lower() in {"1", "true", "yes"}
+EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "false").lower() in {"1", "true", "yes"}
+IMAP_HOST = os.environ.get("IMAP_HOST", "imap.hostinger.com").strip()
+IMAP_PORT = int(os.environ.get("IMAP_PORT", "993"))
+DEFAULT_FROM_EMAIL = os.environ.get(
+    "DEFAULT_FROM_EMAIL",
+    "BeatLab Hub <info@nynusoft.com>",
+)
+SERVER_EMAIL = os.environ.get("SERVER_EMAIL", EMAIL_HOST_USER or "info@nynusoft.com")
+EMAIL_TIMEOUT = int(os.environ.get("EMAIL_TIMEOUT", "20"))
+EMAIL_BACKEND = os.environ.get(
+    "EMAIL_BACKEND",
+    "django.core.mail.backends.smtp.EmailBackend"
+    if EMAIL_HOST
+    else "django.core.mail.backends.console.EmailBackend",
+)
+REGISTER_OTP_TTL_SECONDS = int(os.environ.get("REGISTER_OTP_TTL_SECONDS", "600"))
+REGISTER_OTP_MAX_ATTEMPTS = int(os.environ.get("REGISTER_OTP_MAX_ATTEMPTS", "5"))

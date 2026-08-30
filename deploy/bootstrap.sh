@@ -31,6 +31,15 @@ SECRET_KEY=${SECRET}
 ALLOWED_HOSTS=hub.nynusoft.com,127.0.0.1
 CSRF_TRUSTED_ORIGINS=https://hub.nynusoft.com
 DATABASE_URL=postgres://${DB_USER}:${DB_PASS}@127.0.0.1:5432/${DB_NAME}
+EMAIL_HOST=smtp.hostinger.com
+EMAIL_PORT=465
+EMAIL_USE_SSL=true
+EMAIL_USE_TLS=false
+EMAIL_HOST_USER=info@nynusoft.com
+EMAIL_HOST_PASSWORD=
+DEFAULT_FROM_EMAIL=BeatLab Hub <info@nynusoft.com>
+IMAP_HOST=imap.hostinger.com
+IMAP_PORT=993
 EOF
   chmod 640 "$APP_ROOT/.env"
   chown "$APP_USER:$APP_USER" "$APP_ROOT/.env"

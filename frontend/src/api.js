@@ -39,10 +39,17 @@ export function login(username, password) {
   });
 }
 
-export function register(payload) {
+export function requestRegisterOtp(payload) {
   return request("/api/auth/register/", {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+}
+
+export function confirmRegisterOtp(email, otp) {
+  return request("/api/auth/register/verify/", {
+    method: "POST",
+    body: JSON.stringify({ email, otp }),
   });
 }
 

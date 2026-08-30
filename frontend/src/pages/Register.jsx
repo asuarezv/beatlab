@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { register } from "../api.js";
+import PasswordField from "../components/PasswordField.jsx";
+import { confirmRegisterOtp, requestRegisterOtp } from "../api.js";
 
 export default function Register({ onLogin }) {
   const [companyName, setCompanyName] = useState("");
@@ -8,10 +9,13 @@ export default function Register({ onLogin }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [password2, setPassword2] = useState("");
+  const [otp, setOtp] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [step, setStep] = useState("form");
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
 
-  async function handleSubmit(event) {
+  async function handleStart(event) {
     event.preventDefault();
     const nextCompany = companyName.trim();
     const user = username.trim();
@@ -23,8 +27,8 @@ export default function Register({ onLogin }) {
     setEmail(nextEmail);
     setPassword(pass);
     setPassword2(pass2);
-    if (!nextCompany || !user || !pass) {
-      setError("Empresa, usuario y contraseña son obligatorios.");
+    if (!nextCompany || !user || !nextEmail || !pass) {
+      setError("Empresa, usuario, correo y contraseña son obligatorios.");
       return;
     }
     if (pass !== pass2) {
@@ -34,13 +38,33 @@ export default function Register({ onLogin }) {
     setError("");
     setPending(true);
     try {
-      const data = await register({
+      await requestRegisterOtp({
         company_name: nextCompany,
         username: user,
         email: nextEmail,
         password: pass,
         password2: pass2,
       });
+      setStep("otp");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function handleVerify(event) {
+    event.preventDefault();
+    const code = otp.trim();
+    setOtp(code);
+    if (!code) {
+      setError("Escribe el código que te enviamos.");
+      return;
+    }
+    setError("");
+    setPending(true);
+    try {
+      const data = await confirmRegisterOtp(email.trim(), code);
       onLogin(data);
     } catch (err) {
       setError(err.message);
@@ -49,14 +73,53 @@ export default function Register({ onLogin }) {
     }
   }
 
+  if (step === "otp") {
+    return (
+      <div className="wrap center">
+        <form className="card" onSubmit={handleVerify}>
+          <p className="eyebrow">BeatLab</p>
+          <h1>Código de verificación</h1>
+          <p className="muted">
+            Enviamos un código a <strong>{email}</strong> desde info@nynusoft.com.
+          </p>
+          <label>
+            Código
+            <input
+              name="otp"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              value={otp}
+              onChange={(e) => setOtp(e.target.value)}
+              required
+            />
+          </label>
+          {error ? <p className="error">{error}</p> : null}
+          <button type="submit" disabled={pending}>
+            {pending ? "Verificando…" : "Crear Hub"}
+          </button>
+          <p className="auth-switch">
+            <button
+              type="button"
+              className="linkish"
+              disabled={pending}
+              onClick={() => setStep("form")}
+            >
+              Volver
+            </button>
+          </p>
+        </form>
+      </div>
+    );
+  }
+
   return (
     <div className="wrap center">
-      <form className="card" onSubmit={handleSubmit}>
+      <form className="card" onSubmit={handleStart}>
         <p className="eyebrow">BeatLab</p>
         <h1>Crear mi Hub</h1>
         <p className="muted">
-          Demo de 15 días con 10,000 Beats para dar de alta Systems, Operators y
-          tipos.
+          Demo de 15 días con 10,000 Beats. Te mandamos un código a tu correo
+          para confirmar el alta.
         </p>
         <label>
           Empresa
@@ -79,42 +142,37 @@ export default function Register({ onLogin }) {
           />
         </label>
         <label>
-          Correo (opcional)
+          Correo
           <input
             name="email"
             type="email"
             autoComplete="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-          />
-        </label>
-        <label>
-          Contraseña
-          <input
-            name="password"
-            type="password"
-            autoComplete="new-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            minLength={8}
             required
           />
         </label>
-        <label>
-          Confirmar contraseña
-          <input
-            name="password2"
-            type="password"
-            autoComplete="new-password"
-            value={password2}
-            onChange={(e) => setPassword2(e.target.value)}
-            minLength={8}
-            required
-          />
-        </label>
+        <PasswordField
+          label="Contraseña"
+          name="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          autoComplete="new-password"
+          visible={showPassword}
+          onToggle={() => setShowPassword((value) => !value)}
+        />
+        <PasswordField
+          label="Confirmar contraseña"
+          name="password2"
+          value={password2}
+          onChange={(e) => setPassword2(e.target.value)}
+          autoComplete="new-password"
+          visible={showPassword}
+          onToggle={() => setShowPassword((value) => !value)}
+        />
         {error ? <p className="error">{error}</p> : null}
         <button type="submit" disabled={pending}>
-          {pending ? "Creando…" : "Empezar demo"}
+          {pending ? "Enviando código…" : "Enviar código"}
         </button>
         <p className="auth-switch">
           ¿Ya tienes Hub? <Link to="/">Entrar</Link>

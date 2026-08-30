@@ -160,6 +160,36 @@ nav button {
   margin-top: 1.1rem;
 }
 
+.password-field {
+  position: relative;
+  display: block;
+}
+
+.password-field input {
+  padding-right: 2.8rem;
+}
+
+.card .password-toggle {
+  position: absolute;
+  right: 0.35rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: auto;
+  margin: 0;
+  padding: 0.35rem;
+  background: transparent;
+  color: var(--muted);
+  line-height: 0;
+}
+
+.card .linkish {
+  width: auto;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--accent);
+}
+
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));

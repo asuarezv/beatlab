@@ -53,6 +53,20 @@ class BeatPackage(models.Model):
         ordering = ["-created_at"]
 
 
+class SignupChallenge(models.Model):
+    email = models.EmailField(unique=True)
+    username = models.CharField(max_length=150)
+    company_name = models.CharField(max_length=160)
+    password_hash = models.CharField(max_length=256)
+    code_hash = models.CharField(max_length=64)
+    expires_at = models.DateTimeField()
+    attempts = models.PositiveSmallIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+
 class Membership(models.Model):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
