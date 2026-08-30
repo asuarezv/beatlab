@@ -29,7 +29,7 @@ function messageFromFailure(response, data) {
   }
   const status = response.status;
   if (status === 401 || status === 403) {
-    return "Usuario o contraseña incorrectos";
+    return "No se pudo verificar el acceso.";
   }
   if (status === 404) {
     return "No se encontró el servicio de login en el Hub (404).";
@@ -60,14 +60,29 @@ function contactHubError() {
   return new Error("No se pudo contactar el Hub.");
 }
 
-export function loginOperator(username, password) {
-  return fetch(`${hubUrl()}/api/monitor/auth/login/`, {
+export function requestOperatorOtp(email) {
+  return fetch(`${hubUrl()}/api/monitor/auth/request-otp/`, {
     method: "POST",
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ username, password }),
+    body: JSON.stringify({ email }),
+  })
+    .catch(() => {
+      throw contactHubError();
+    })
+    .then(readJson);
+}
+
+export function verifyOperatorOtp(email, otp) {
+  return fetch(`${hubUrl()}/api/monitor/auth/verify-otp/`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ email, otp }),
   })
     .catch(() => {
       throw contactHubError();

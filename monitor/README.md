@@ -18,8 +18,8 @@ Monitor apunta siempre a `https://hub.nynusoft.com` (`expo.extra.hubUrl` en `app
 
 ## Auth y vivo
 
-1. Da de alta un Operator en el Hub.
-2. En Monitor: usuario + contraseña de ese Operator.
+1. Da de alta un Operator en el Hub (nombre, apellidos y correo).
+2. En Monitor: correo → código de 6 dígitos al correo → entra.
 3. Los Beats que lleguen al API (`POST /api/ingest/beats/` con el JWT del System) aparecen en la lista y por WebSocket (`/ws/monitor/?token=...`).
 
 No guardes secretos ni JWTs de Systems en esta app.
