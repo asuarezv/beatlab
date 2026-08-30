@@ -9,15 +9,18 @@
     "ios": "expo start --ios"
   },
   "dependencies": {
-    "@react-native-async-storage/async-storage": "1.23.1",
-    "expo": "~52.0.47",
-    "expo-asset": "~11.0.5",
-    "expo-constants": "~17.0.8",
-    "expo-file-system": "~18.0.12",
-    "expo-font": "~13.0.4",
-    "expo-keep-awake": "~14.0.3",
-    "expo-status-bar": "~2.0.1",
-    "react": "18.3.1",
-    "react-native": "0.76.9"
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "expo": "^57.0.0",
+    "expo-asset": "~57.0.15",
+    "expo-constants": "~57.0.16",
+    "expo-file-system": "~57.0.6",
+    "expo-font": "~57.0.2",
+    "expo-keep-awake": "~57.0.1",
+    "expo-status-bar": "~57.0.1",
+    "react": "19.2.3",
+    "react-native": "0.86.3"
+  },
+  "devDependencies": {
+    "babel-preset-expo": "~57.0.0"
   }
 }
