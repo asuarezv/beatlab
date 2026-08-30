@@ -1,11 +1,15 @@
+from unittest.mock import patch
+
 from django.contrib.auth import get_user_model
+from django.core import mail
 from rest_framework.test import APITestCase
 
-from .models import Company, Operator
+from .models import Company, EmailChangeChallenge, Operator
 from .quota import grant_demo
 from .tenant import ensure_membership
 from .tokens import issue_operator_jwt
 from .validation import (
+    EMAIL_CHANGE_SENT,
     EMAIL_INVALID,
     HUB_EMAIL_TAKEN,
     OPERATOR_EMAIL_TAKEN,
@@ -124,29 +128,103 @@ class HubProfilePasswordTests(APITestCase):
 
     def test_update_profile_changes_name_and_email(self):
         self._hub_session()
-        response = self.client.patch(
-            "/api/auth/profile/",
-            {
-                "first_name": "Roberto",
-                "last_name": "Labbe",
-                "email": "roberto@labbe.test",
-            },
-            format="json",
-        )
+        with patch("hub.otp.secrets.choice", return_value="7"):
+            response = self.client.patch(
+                "/api/auth/profile/",
+                {
+                    "first_name": "Roberto",
+                    "last_name": "Labbe",
+                    "email": "roberto@labbe.test",
+                },
+                format="json",
+            )
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["detail"], PROFILE_UPDATED)
+        self.assertEqual(response.json()["detail"], EMAIL_CHANGE_SENT)
+        self.assertEqual(response.json()["pending_email"], "roberto@labbe.test")
         self.assertEqual(response.json()["user"]["first_name"], "Roberto")
         self.assertEqual(response.json()["user"]["last_name"], "Labbe")
-        self.assertEqual(response.json()["user"]["email"], "roberto@labbe.test")
+        self.assertEqual(response.json()["user"]["email"], "hubadmin@labbe.test")
         self.assertEqual(response.json()["user"]["display_name"], "Roberto Labbe")
         self.assertEqual(response.json()["user"]["username"], "hubadmin")
         self.staff.refresh_from_db()
         self.assertEqual(self.staff.first_name, "Roberto")
-        self.assertEqual(self.staff.email, "roberto@labbe.test")
+        self.assertEqual(self.staff.last_name, "Labbe")
+        self.assertEqual(self.staff.email, "hubadmin@labbe.test")
         self.assertEqual(self.staff.username, "hubadmin")
+        self.assertEqual(
+            EmailChangeChallenge.objects.filter(email="roberto@labbe.test").count(),
+            1,
+        )
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].subject, "Confirma tu nuevo correo")
+        self.assertEqual(mail.outbox[0].to, ["roberto@labbe.test"])
+        confirmed = self.client.post(
+            "/api/auth/profile/verify/",
+            {"email": "roberto@labbe.test", "otp": "777777"},
+            format="json",
+        )
+        self.assertEqual(confirmed.status_code, 200)
+        self.assertEqual(confirmed.json()["detail"], PROFILE_UPDATED)
+        self.assertEqual(confirmed.json()["user"]["email"], "roberto@labbe.test")
+        self.staff.refresh_from_db()
+        self.assertEqual(self.staff.email, "roberto@labbe.test")
+        self.assertEqual(EmailChangeChallenge.objects.count(), 0)
         me = self.client.get("/api/auth/me/")
         self.assertEqual(me.status_code, 200)
         self.assertEqual(me.json()["user"]["email"], "roberto@labbe.test")
+
+    def test_update_profile_email_otp_rejects_wrong_code(self):
+        self._hub_session()
+        with patch("hub.otp.secrets.choice", return_value="3"):
+            self.client.patch(
+                "/api/auth/profile/",
+                {
+                    "first_name": "Beto",
+                    "last_name": "Admin",
+                    "email": "nuevo@labbe.test",
+                },
+                format="json",
+            )
+        wrong = self.client.post(
+            "/api/auth/profile/verify/",
+            {"email": "nuevo@labbe.test", "otp": "000000"},
+            format="json",
+        )
+        self.assertEqual(wrong.status_code, 400)
+        self.assertEqual(wrong.json()["detail"], "El código no es válido.")
+        self.staff.refresh_from_db()
+        self.assertEqual(self.staff.email, "hubadmin@labbe.test")
+
+    def test_verify_profile_email_rejects_anonymous(self):
+        response = self.client.post(
+            "/api/auth/profile/verify/",
+            {"email": "nuevo@labbe.test", "otp": "123456"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 401)
+
+    def test_update_profile_keeps_email_if_otp_send_fails(self):
+        self._hub_session()
+        with patch("hub.otp.send_email_change_otp", side_effect=RuntimeError("smtp")):
+            response = self.client.patch(
+                "/api/auth/profile/",
+                {
+                    "first_name": "Roberto",
+                    "last_name": "Labbe",
+                    "email": "roberto@labbe.test",
+                },
+                format="json",
+            )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.json()["detail"],
+            "No se pudo enviar el código. Inténtalo de nuevo.",
+        )
+        self.staff.refresh_from_db()
+        self.assertEqual(self.staff.first_name, "Roberto")
+        self.assertEqual(self.staff.last_name, "Labbe")
+        self.assertEqual(self.staff.email, "hubadmin@labbe.test")
+        self.assertEqual(EmailChangeChallenge.objects.count(), 0)
 
     def test_update_profile_keeps_own_email(self):
         self._hub_session()
@@ -161,6 +239,8 @@ class HubProfilePasswordTests(APITestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["user"]["email"], "hubadmin@labbe.test")
+        self.assertNotIn("pending_email", response.json())
+        self.assertEqual(len(mail.outbox), 0)
 
     def test_update_profile_rejects_operator_email(self):
         op_user = User.objects.create_user(
@@ -313,28 +393,54 @@ class MonitorProfileTests(APITestCase):
         )
         self.assertEqual(response.status_code, 401)
 
+    def test_verify_email_rejects_anonymous(self):
+        response = self.client.post(
+            "/api/monitor/auth/verify-email/",
+            {"email": "ana@labbe.test", "otp": "123456"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 401)
+
     def test_update_profile_changes_name_and_email(self):
-        response = self.client.patch(
-            "/api/monitor/auth/me/",
-            {
-                "first_name": "Ana María",
-                "last_name": "García",
-                "email": "ana@labbe.test",
-            },
+        with patch("hub.otp.secrets.choice", return_value="8"):
+            response = self.client.patch(
+                "/api/monitor/auth/me/",
+                {
+                    "first_name": "Ana María",
+                    "last_name": "García",
+                    "email": "ana@labbe.test",
+                },
+                format="json",
+                HTTP_AUTHORIZATION=self._auth(),
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["detail"], EMAIL_CHANGE_SENT)
+        self.assertEqual(response.data["pending_email"], "ana@labbe.test")
+        self.assertEqual(response.data["operator"]["first_name"], "Ana María")
+        self.assertEqual(response.data["operator"]["last_name"], "García")
+        self.assertEqual(response.data["operator"]["email"], "op@labbe.test")
+        self.assertEqual(response.data["operator"]["display_name"], "Ana María García")
+        self.operator.refresh_from_db()
+        self.op_user.refresh_from_db()
+        self.assertEqual(self.operator.email, "op@labbe.test")
+        self.assertEqual(self.op_user.email, "op@labbe.test")
+        self.assertEqual(self.op_user.first_name, "Ana María")
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].subject, "Confirma tu nuevo correo")
+        self.assertEqual(mail.outbox[0].to, ["ana@labbe.test"])
+        confirmed = self.client.post(
+            "/api/monitor/auth/verify-email/",
+            {"email": "ana@labbe.test", "otp": "888888"},
             format="json",
             HTTP_AUTHORIZATION=self._auth(),
         )
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data["detail"], PROFILE_UPDATED)
-        self.assertEqual(response.data["operator"]["first_name"], "Ana María")
-        self.assertEqual(response.data["operator"]["last_name"], "García")
-        self.assertEqual(response.data["operator"]["email"], "ana@labbe.test")
-        self.assertEqual(response.data["operator"]["display_name"], "Ana María García")
+        self.assertEqual(confirmed.status_code, 200)
+        self.assertEqual(confirmed.data["detail"], PROFILE_UPDATED)
+        self.assertEqual(confirmed.data["operator"]["email"], "ana@labbe.test")
         self.operator.refresh_from_db()
         self.op_user.refresh_from_db()
         self.assertEqual(self.operator.email, "ana@labbe.test")
         self.assertEqual(self.op_user.email, "ana@labbe.test")
-        self.assertEqual(self.op_user.first_name, "Ana María")
         me = self.client.get(
             "/api/monitor/auth/me/",
             HTTP_AUTHORIZATION=self._auth(),

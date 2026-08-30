@@ -134,6 +134,22 @@ export function updateOperatorProfile(token, payload) {
     .then(readJson);
 }
 
+export function verifyOperatorEmailChange(token, email, otp) {
+  return fetch(`${hubUrl()}/api/monitor/auth/verify-email/`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ email, otp }),
+  })
+    .catch(() => {
+      throw contactHubError();
+    })
+    .then(readJson);
+}
+
 export function setOperatorPassword(token, payload) {
   return fetch(`${hubUrl()}/api/monitor/auth/password/`, {
     method: "POST",

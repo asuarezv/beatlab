@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   KeyboardAvoidingView,
   Modal,
@@ -16,7 +16,9 @@ import {
   fetchOperatorMe,
   setOperatorPassword,
   updateOperatorProfile,
+  verifyOperatorEmailChange,
 } from "../api";
+import OtpInput from "../components/OtpInput";
 import PasswordField from "../components/PasswordField";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -28,6 +30,10 @@ export default function ProfileScreen({ session, onBack, onSession, onLogout }) 
   const [profileError, setProfileError] = useState("");
   const [profileOk, setProfileOk] = useState("");
   const [profileBusy, setProfileBusy] = useState(false);
+  const [step, setStep] = useState("form");
+  const [pendingEmail, setPendingEmail] = useState("");
+  const [otp, setOtp] = useState("");
+  const verifyingRef = useRef(false);
 
   const [hasPassword, setHasPassword] = useState(
     Boolean(session.operator?.has_password),
@@ -46,6 +52,8 @@ export default function ProfileScreen({ session, onBack, onSession, onLogout }) 
   const first = firstName.trim();
   const last = lastName.trim();
   const nextEmail = email.trim();
+  const savedEmail = (session.operator?.email || "").trim();
+  const emailChanged = nextEmail.toLowerCase() !== savedEmail.toLowerCase();
   const emailInvalid = Boolean(nextEmail) && !EMAIL_RE.test(nextEmail);
   const canSaveProfile =
     Boolean(first) && Boolean(last) && Boolean(nextEmail) && EMAIL_RE.test(nextEmail);
@@ -112,7 +120,84 @@ export default function ProfileScreen({ session, onBack, onSession, onLogout }) 
         ...session,
         operator: { ...session.operator, ...data.operator },
       });
+      if (data.pending_email) {
+        setPendingEmail(data.pending_email);
+        setEmail(data.pending_email);
+        setOtp("");
+        setStep("otp");
+        return;
+      }
       setProfileOk(data.detail || "Datos actualizados.");
+    } catch (err) {
+      if (err.status === 401) {
+        onLogout();
+        return;
+      }
+      setProfileError(err.message);
+    } finally {
+      setProfileBusy(false);
+    }
+  }
+
+  async function verifyEmailOtp(code) {
+    const next = String(code ?? otp).replace(/\D/g, "");
+    setOtp(next);
+    if (next.length !== 6) {
+      setProfileError("Escribe el código de 6 dígitos que enviamos.");
+      return;
+    }
+    if (verifyingRef.current) {
+      return;
+    }
+    verifyingRef.current = true;
+    setProfileError("");
+    setProfileOk("");
+    setProfileBusy(true);
+    try {
+      const data = await verifyOperatorEmailChange(
+        session.token,
+        pendingEmail,
+        next,
+      );
+      onSession({
+        ...session,
+        operator: { ...session.operator, ...data.operator },
+      });
+      setEmail(data.operator?.email || pendingEmail);
+      setPendingEmail("");
+      setOtp("");
+      setStep("form");
+      setProfileOk(data.detail || "Datos actualizados.");
+    } catch (err) {
+      if (err.status === 401) {
+        onLogout();
+        return;
+      }
+      setProfileError(err.message);
+    } finally {
+      verifyingRef.current = false;
+      setProfileBusy(false);
+    }
+  }
+
+  async function handleResendEmailOtp() {
+    setProfileError("");
+    setProfileOk("");
+    setProfileBusy(true);
+    try {
+      const data = await updateOperatorProfile(session.token, {
+        first_name: firstName.trim(),
+        last_name: lastName.trim(),
+        email: pendingEmail,
+      });
+      onSession({
+        ...session,
+        operator: { ...session.operator, ...data.operator },
+      });
+      if (data.pending_email) {
+        setPendingEmail(data.pending_email);
+        setOtp("");
+      }
     } catch (err) {
       if (err.status === 401) {
         onLogout();
@@ -184,52 +269,113 @@ export default function ProfileScreen({ session, onBack, onSession, onLogout }) 
           {session.operator?.email ? ` · ${session.operator.email}` : ""}
         </Text>
         <Text style={styles.section}>Datos de la cuenta</Text>
-        <Text style={styles.hint}>
-          Nombre, apellidos y correo con los que entras a Monitor.
-        </Text>
-        <Text style={styles.label}>Nombre</Text>
-        <TextInput
-          style={styles.input}
-          value={firstName}
-          onChangeText={setFirstName}
-          autoCapitalize="words"
-          autoComplete="given-name"
-          textContentType="givenName"
-        />
-        <Text style={styles.label}>Apellidos</Text>
-        <TextInput
-          style={styles.input}
-          value={lastName}
-          onChangeText={setLastName}
-          autoCapitalize="words"
-          autoComplete="family-name"
-          textContentType="familyName"
-        />
-        <Text style={styles.label}>Correo</Text>
-        <TextInput
-          style={[styles.input, emailInvalid && styles.invalid]}
-          value={email}
-          onChangeText={setEmail}
-          autoCapitalize="none"
-          autoCorrect={false}
-          keyboardType="email-address"
-          autoComplete="email"
-          textContentType="emailAddress"
-        />
-        {profileError ? <Text style={styles.error}>{profileError}</Text> : null}
-        {profileOk ? <Text style={styles.ok}>{profileOk}</Text> : null}
-        <Pressable
-          style={[
-            styles.button,
-            (!canSaveProfile || profileBusy) && styles.disabled,
-          ]}
-          onPress={handleProfileSave}
-          disabled={!canSaveProfile || profileBusy}
-        >
-          <Text style={styles.buttonText}>
-            {profileBusy ? "Guardando…" : "Guardar datos"}
-          </Text>
-        </Pressable>
+        {step === "otp" ? (
+          <>
+            <Text style={styles.hint}>
+              Enviamos un código a{" "}
+              <Text style={styles.strong}>{pendingEmail}</Text>. El correo no
+              cambia hasta que el código sea correcto.
+            </Text>
+            <Text style={styles.label}>Código</Text>
+            <OtpInput
+              value={otp}
+              onChange={(next) => {
+                setOtp(next);
+                if (profileError) setProfileError("");
+              }}
+              onComplete={verifyEmailOtp}
+              disabled={profileBusy}
+              invalid={Boolean(profileError)}
+            />
+            {profileError ? <Text style={styles.error}>{profileError}</Text> : null}
+            <Pressable
+              style={[
+                styles.button,
+                (profileBusy || otp.length !== 6) && styles.disabled,
+              ]}
+              onPress={() => verifyEmailOtp(otp)}
+              disabled={profileBusy || otp.length !== 6}
+            >
+              <Text style={styles.buttonText}>
+                {profileBusy ? "Verificando…" : "Confirmar correo"}
+              </Text>
+            </Pressable>
+            <Pressable
+              style={styles.linkRow}
+              disabled={profileBusy}
+              onPress={handleResendEmailOtp}
+            >
+              <Text style={styles.linkText}>Reenviar código</Text>
+            </Pressable>
+            <Pressable
+              style={styles.linkRow}
+              disabled={profileBusy}
+              onPress={() => {
+                setOtp("");
+                setProfileError("");
+                setStep("form");
+              }}
+            >
+              <Text style={styles.linkText}>Volver</Text>
+            </Pressable>
+          </>
+        ) : (
+          <>
+            <Text style={styles.hint}>
+              El nombre y los apellidos se guardan al momento. El correo nuevo
+              se confirma con un código.
+            </Text>
+            <Text style={styles.label}>Nombre</Text>
+            <TextInput
+              style={styles.input}
+              value={firstName}
+              onChangeText={setFirstName}
+              autoCapitalize="words"
+              autoComplete="given-name"
+              textContentType="givenName"
+            />
+            <Text style={styles.label}>Apellidos</Text>
+            <TextInput
+              style={styles.input}
+              value={lastName}
+              onChangeText={setLastName}
+              autoCapitalize="words"
+              autoComplete="family-name"
+              textContentType="familyName"
+            />
+            <Text style={styles.label}>Correo</Text>
+            <TextInput
+              style={[styles.input, emailInvalid && styles.invalid]}
+              value={email}
+              onChangeText={setEmail}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="email-address"
+              autoComplete="email"
+              textContentType="emailAddress"
+            />
+            {profileError ? <Text style={styles.error}>{profileError}</Text> : null}
+            {profileOk ? <Text style={styles.ok}>{profileOk}</Text> : null}
+            <Pressable
+              style={[
+                styles.button,
+                (!canSaveProfile || profileBusy) && styles.disabled,
+              ]}
+              onPress={handleProfileSave}
+              disabled={!canSaveProfile || profileBusy}
+            >
+              <Text style={styles.buttonText}>
+                {profileBusy
+                  ? emailChanged
+                    ? "Enviando código…"
+                    : "Guardando…"
+                  : emailChanged
+                    ? "Enviar código"
+                    : "Guardar datos"}
+              </Text>
+            </Pressable>
+          </>
+        )}
         <Text style={[styles.section, styles.sectionGap]}>
           {hasPassword ? "Cambiar contraseña" : "Crear contraseña"}
         </Text>
@@ -374,6 +520,18 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     marginBottom: 16,
+  },
+  strong: {
+    color: colors.text,
+    fontWeight: "600",
+  },
+  linkRow: {
+    marginTop: 16,
+    alignItems: "center",
+  },
+  linkText: {
+    color: colors.accent,
+    fontWeight: "600",
   },
   label: {
     color: colors.muted,

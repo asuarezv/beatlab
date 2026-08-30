@@ -1,7 +1,8 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import OtpInput from "../components/OtpInput.jsx";
 import PasswordField from "../components/PasswordField.jsx";
-import { changePassword, logout, updateProfile } from "../api.js";
+import { changePassword, logout, updateProfile, verifyProfileEmail } from "../api.js";
 import {
   EMAIL_ERROR,
   PASSWORD_CHANGE_REQUIRED,
@@ -28,6 +29,10 @@ export default function Profile({ session, onSession }) {
   const [profileError, setProfileError] = useState("");
   const [profileOk, setProfileOk] = useState("");
   const [profilePending, setProfilePending] = useState(false);
+  const [step, setStep] = useState("form");
+  const [pendingEmail, setPendingEmail] = useState("");
+  const [otp, setOtp] = useState("");
+  const verifyingRef = useRef(false);
 
   const [currentPassword, setCurrentPassword] = useState("");
   const [password, setPassword] = useState("");
@@ -52,10 +57,9 @@ export default function Profile({ session, onSession }) {
   const savedLast = saved.lastName.trim();
   const savedEmail = saved.email.trim();
   const emailInvalid = Boolean(nextEmail) && !isValidEmail(nextEmail);
+  const emailChanged = nextEmail.toLowerCase() !== savedEmail.toLowerCase();
   const profileDirty =
-    first !== savedFirst ||
-    last !== savedLast ||
-    nextEmail.toLowerCase() !== savedEmail.toLowerCase();
+    first !== savedFirst || last !== savedLast || emailChanged;
   const profileOkToSave =
     profileDirty &&
     Boolean(first) &&
@@ -123,8 +127,66 @@ export default function Profile({ session, onSession }) {
       const next = accountFields(data.user);
       setFirstName(next.firstName || first);
       setLastName(next.lastName || last);
+      if (data.pending_email) {
+        setPendingEmail(data.pending_email);
+        setEmail(data.pending_email);
+        setOtp("");
+        setStep("otp");
+        return;
+      }
       setEmail(next.email || nextEmail);
       setProfileOk(data.detail || "Datos actualizados.");
+    } catch (err) {
+      setProfileError(err.message);
+    } finally {
+      setProfilePending(false);
+    }
+  }
+
+  async function verifyEmailOtp(code) {
+    const next = String(code ?? otp).replace(/\D/g, "");
+    setOtp(next);
+    if (next.length !== 6) {
+      setProfileError("Escribe el código de 6 dígitos que enviamos.");
+      return;
+    }
+    if (verifyingRef.current) {
+      return;
+    }
+    verifyingRef.current = true;
+    setProfileError("");
+    setProfileOk("");
+    setProfilePending(true);
+    try {
+      const data = await verifyProfileEmail(pendingEmail, next);
+      onSession?.(data);
+      const nextFields = accountFields(data.user);
+      setFirstName(nextFields.firstName || first);
+      setLastName(nextFields.lastName || last);
+      setEmail(nextFields.email || pendingEmail);
+      setPendingEmail("");
+      setOtp("");
+      setStep("form");
+      setProfileOk(data.detail || "Datos actualizados.");
+    } catch (err) {
+      setProfileError(err.message);
+    } finally {
+      verifyingRef.current = false;
+      setProfilePending(false);
+    }
+  }
+
+  async function handleResendEmailOtp() {
+    setProfileError("");
+    setProfileOk("");
+    setProfilePending(true);
+    try {
+      const data = await updateProfile(first, last, pendingEmail);
+      onSession?.(data);
+      if (data.pending_email) {
+        setPendingEmail(data.pending_email);
+        setOtp("");
+      }
     } catch (err) {
       setProfileError(err.message);
     } finally {
@@ -181,7 +243,14 @@ export default function Profile({ session, onSession }) {
       <div className="profile-cards">
         <form
           className="card profile-password"
-          onSubmit={handleProfileSubmit}
+          onSubmit={(event) => {
+            if (step === "otp") {
+              event.preventDefault();
+              verifyEmailOtp(otp);
+              return;
+            }
+            handleProfileSubmit(event);
+          }}
           autoComplete="on"
         >
           <h3>Datos de la cuenta</h3>
@@ -189,59 +258,118 @@ export default function Profile({ session, onSession }) {
             <span>Usuario</span>
             <strong>{user.username || "—"}</strong>
           </div>
-          <p className="muted profile-readonly-hint">
-            El usuario no se cambia. Nombre, apellidos y correo sí.
-          </p>
-          <label>
-            Nombre <span className="req">*</span>
-            <input
-              name="first_name"
-              autoComplete="given-name"
-              placeholder="Nombre"
-              value={firstName}
-              onChange={(e) => {
-                setFirstName(e.target.value);
-                setProfileOk("");
-              }}
-              required
-            />
-          </label>
-          <label>
-            Apellidos <span className="req">*</span>
-            <input
-              name="last_name"
-              autoComplete="family-name"
-              placeholder="Apellidos"
-              value={lastName}
-              onChange={(e) => {
-                setLastName(e.target.value);
-                setProfileOk("");
-              }}
-              required
-            />
-          </label>
-          <label>
-            Correo <span className="req">*</span>
-            <input
-              name="email"
-              type="email"
-              autoComplete="email"
-              placeholder="correo@empresa.com"
-              value={email}
-              className={emailBlurred && emailInvalid ? "invalid" : undefined}
-              onChange={(e) => {
-                setEmail(e.target.value);
-                setProfileOk("");
-              }}
-              onBlur={() => setEmailBlurred(true)}
-              required
-            />
-          </label>
-          {profileError ? <p className="error">{profileError}</p> : null}
-          {profileOk ? <p className="ok">{profileOk}</p> : null}
-          <button type="submit" disabled={!profileOkToSave || profilePending}>
-            {profilePending ? "Guardando…" : "Guardar datos"}
-          </button>
+          {step === "otp" ? (
+            <>
+              <p className="muted profile-readonly-hint">
+                Enviamos un código a <strong>{pendingEmail}</strong>. El correo
+                no cambia hasta que el código sea correcto.
+              </p>
+              <OtpInput
+                id="profile-email-otp"
+                value={otp}
+                onChange={(next) => {
+                  setOtp(next);
+                  if (profileError) setProfileError("");
+                }}
+                onComplete={verifyEmailOtp}
+                disabled={profilePending}
+                invalid={Boolean(profileError)}
+              />
+              {profileError ? <p className="error">{profileError}</p> : null}
+              <div className="row">
+                <button
+                  type="button"
+                  disabled={profilePending || otp.length !== 6}
+                  onClick={() => verifyEmailOtp(otp)}
+                >
+                  {profilePending ? "Verificando…" : "Confirmar correo"}
+                </button>
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={profilePending}
+                  onClick={handleResendEmailOtp}
+                >
+                  Reenviar código
+                </button>
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={profilePending}
+                  onClick={() => {
+                    setOtp("");
+                    setProfileError("");
+                    setStep("form");
+                  }}
+                >
+                  Volver
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="muted profile-readonly-hint">
+                El usuario no se cambia. El nombre y los apellidos se guardan al
+                momento. El correo nuevo se confirma con un código.
+              </p>
+              <label>
+                Nombre <span className="req">*</span>
+                <input
+                  name="first_name"
+                  autoComplete="given-name"
+                  placeholder="Nombre"
+                  value={firstName}
+                  onChange={(e) => {
+                    setFirstName(e.target.value);
+                    setProfileOk("");
+                  }}
+                  required
+                />
+              </label>
+              <label>
+                Apellidos <span className="req">*</span>
+                <input
+                  name="last_name"
+                  autoComplete="family-name"
+                  placeholder="Apellidos"
+                  value={lastName}
+                  onChange={(e) => {
+                    setLastName(e.target.value);
+                    setProfileOk("");
+                  }}
+                  required
+                />
+              </label>
+              <label>
+                Correo <span className="req">*</span>
+                <input
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  placeholder="correo@empresa.com"
+                  value={email}
+                  className={emailBlurred && emailInvalid ? "invalid" : undefined}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    setProfileOk("");
+                  }}
+                  onBlur={() => setEmailBlurred(true)}
+                  required
+                />
+              </label>
+              {profileError ? <p className="error">{profileError}</p> : null}
+              {profileOk ? <p className="ok">{profileOk}</p> : null}
+              <button type="submit" disabled={!profileOkToSave || profilePending}>
+                {profilePending
+                  ? emailChanged
+                    ? "Enviando código…"
+                    : "Guardando…"
+                  : emailChanged
+                    ? "Enviar código"
+                    : "Guardar datos"}
+              </button>
+            </>
+          )}
         </form>
         <form className="card profile-password" onSubmit={handlePasswordSubmit}>
           <h3>Cambiar contraseña</h3>

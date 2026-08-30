@@ -90,6 +90,13 @@ export function updateProfile(firstName, lastName, email) {
   });
 }
 
+export function verifyProfileEmail(email, otp) {
+  return request("/api/auth/profile/verify/", {
+    method: "POST",
+    body: JSON.stringify({ email, otp }),
+  });
+}
+
 export function selectCompany(companyId) {
   return request("/api/auth/company/", {
     method: "POST",

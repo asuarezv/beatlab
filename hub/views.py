@@ -30,6 +30,7 @@ from .models import (
     Beat,
     BeatType,
     Company,
+    EmailChangeChallenge,
     Operator,
     OperatorInviteChallenge,
     OperatorOtpChallenge,
@@ -38,10 +39,12 @@ from .models import (
 from .notify import beat_payload, notify_company_beat
 from .tokens import issue_operator_jwt, issue_system_jwt
 from .otp import (
+    consume_email_change_otp,
     consume_monitor_otp,
     consume_monitor_password,
     consume_operator_invite_otp,
     consume_signup_otp,
+    issue_email_change_otp,
     issue_monitor_otp,
     issue_operator_invite_otp,
     issue_signup_otp,
@@ -49,6 +52,7 @@ from .otp import (
 )
 from .validation import (
     CURRENT_PASSWORD_ERROR,
+    HUB_EMAIL_TAKEN,
     OPERATOR_ACCOUNT_ON_HUB,
     OPERATOR_EMAIL_TAKEN,
     PASSWORD_CHANGE_REQUIRED,
@@ -56,6 +60,7 @@ from .validation import (
     PASSWORD_UPDATED,
     PROFILE_UPDATED,
     USERNAME_ERROR,
+    assert_email_available,
     is_valid_username,
     validate_new_password,
     validate_profile_fields,
@@ -297,10 +302,52 @@ def update_profile(request):
     except ValueError as exc:
         return JsonResponse({"detail": str(exc)}, status=400)
     user = request.user
+    email_changed = (user.email or "").strip().lower() != email
     user.first_name = first_name
     user.last_name = last_name
-    user.email = email
-    user.save(update_fields=["first_name", "last_name", "email"])
+    user.save(update_fields=["first_name", "last_name"])
+    if not email_changed:
+        EmailChangeChallenge.objects.filter(user=user, operator__isnull=True).delete()
+        payload = session_payload(request, user)
+        payload["detail"] = PROFILE_UPDATED
+        return JsonResponse(payload)
+    try:
+        result = issue_email_change_otp(
+            email=email,
+            name=first_name or user.username,
+            user=user,
+        )
+    except ValueError as exc:
+        return JsonResponse({"detail": str(exc)}, status=400)
+    payload = session_payload(request, user)
+    payload.update(result)
+    return JsonResponse(payload)
+
+
+@require_POST
+def verify_profile_email(request):
+    if not _staff_ok(request.user):
+        return JsonResponse({"detail": "No autorizado"}, status=401)
+    data = _json_body(request)
+    if data is None:
+        return JsonResponse({"detail": "JSON inválido"}, status=400)
+    try:
+        challenge = consume_email_change_otp(
+            email=data.get("email"),
+            otp=data.get("otp"),
+            user=request.user,
+        )
+        assert_email_available(challenge.email, exclude_user_id=request.user.pk)
+    except ValueError as exc:
+        return JsonResponse({"detail": str(exc)}, status=400)
+    user = request.user
+    user.email = challenge.email
+    try:
+        with transaction.atomic():
+            user.save(update_fields=["email"])
+            challenge.delete()
+    except IntegrityError:
+        return JsonResponse({"detail": HUB_EMAIL_TAKEN}, status=400)
     payload = session_payload(request, user)
     payload["detail"] = PROFILE_UPDATED
     return JsonResponse(payload)
@@ -383,6 +430,7 @@ class OperatorViewSet(TenantViewSet):
         instance.delete()
         OperatorOtpChallenge.objects.filter(email__iexact=email).delete()
         OperatorInviteChallenge.objects.filter(email__iexact=email).delete()
+        EmailChangeChallenge.objects.filter(email__iexact=email).delete()
         if user and not user.is_staff and not user.is_superuser:
             user.delete()
 
@@ -621,11 +669,11 @@ def monitor_me(request):
         )
     except ValueError as exc:
         return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+    email_changed = (operator.email or "").strip().lower() != email
     operator.first_name = first_name
     operator.last_name = last_name
-    operator.email = email
     try:
-        operator.save(update_fields=["first_name", "last_name", "email"])
+        operator.save(update_fields=["first_name", "last_name"])
     except IntegrityError:
         return Response(
             {"detail": OPERATOR_EMAIL_TAKEN},
@@ -635,8 +683,53 @@ def monitor_me(request):
     if user:
         user.first_name = first_name
         user.last_name = last_name
-        user.email = email
-        user.save(update_fields=["first_name", "last_name", "email"])
+        user.save(update_fields=["first_name", "last_name"])
+    if not email_changed:
+        EmailChangeChallenge.objects.filter(operator=operator).delete()
+        payload = monitor_session_payload(operator, with_token=False)
+        payload["detail"] = PROFILE_UPDATED
+        return Response(payload)
+    try:
+        result = issue_email_change_otp(
+            email=email,
+            name=first_name or operator.display_name(),
+            operator=operator,
+        )
+    except ValueError as exc:
+        return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+    payload = monitor_session_payload(operator, with_token=False)
+    payload.update(result)
+    return Response(payload)
+
+
+@api_view(["POST"])
+@authentication_classes([OperatorTokenAuthentication])
+@permission_classes([IsOperatorToken])
+def monitor_verify_email(request):
+    operator = request.auth
+    try:
+        challenge = consume_email_change_otp(
+            email=request.data.get("email"),
+            otp=request.data.get("otp"),
+            operator=operator,
+        )
+        assert_email_available(challenge.email, exclude_operator_id=operator.pk)
+    except ValueError as exc:
+        return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+    operator.email = challenge.email
+    try:
+        with transaction.atomic():
+            operator.save(update_fields=["email"])
+            user = operator.user
+            if user:
+                user.email = challenge.email
+                user.save(update_fields=["email"])
+            challenge.delete()
+    except IntegrityError:
+        return Response(
+            {"detail": OPERATOR_EMAIL_TAKEN},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
     payload = monitor_session_payload(operator, with_token=False)
     payload["detail"] = PROFILE_UPDATED
     return Response(payload)

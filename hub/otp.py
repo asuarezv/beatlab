@@ -10,16 +10,29 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import validate_email
 from django.utils import timezone
 
-from .emails import send_monitor_otp, send_operator_invite_otp, send_register_otp
-from .models import Operator, OperatorInviteChallenge, OperatorOtpChallenge, SignupChallenge
+from .emails import (
+    send_email_change_otp,
+    send_monitor_otp,
+    send_operator_invite_otp,
+    send_register_otp,
+)
+from .models import (
+    EmailChangeChallenge,
+    Operator,
+    OperatorInviteChallenge,
+    OperatorOtpChallenge,
+    SignupChallenge,
+)
 from .validation import (
     COMPANY_NAME_ERROR,
+    EMAIL_CHANGE_SENT,
     HUB_ACCOUNT_ON_MONITOR,
     MONITOR_CREDENTIALS_ERROR,
     MONITOR_LOGIN_REQUIRED,
     OPERATOR_EMAIL_TAKEN,
     PERSON_NAME_ERROR,
     USERNAME_ERROR,
+    assert_email_available,
     email_already_used,
     is_valid_company_name,
     is_valid_username,
@@ -273,6 +286,71 @@ def consume_monitor_otp(*, email, otp) -> Operator:
     if not operator or not operator.user.is_active:
         raise ValueError("Solicita un código nuevo.")
     return operator
+
+
+def issue_email_change_otp(*, email, name, user=None, operator=None) -> dict:
+    email = (email or "").strip().lower()
+    name = (name or "").strip() or email
+    if user is None and operator is None:
+        raise ValueError("Solicita un código nuevo.")
+    if user is not None:
+        assert_email_available(email, exclude_user_id=user.pk)
+        EmailChangeChallenge.objects.filter(user=user).delete()
+    if operator is not None:
+        assert_email_available(email, exclude_operator_id=operator.pk)
+        EmailChangeChallenge.objects.filter(operator=operator).delete()
+    EmailChangeChallenge.objects.filter(email=email).delete()
+
+    otp = _new_otp()
+    ttl = _ttl()
+    EmailChangeChallenge.objects.create(
+        user=user,
+        operator=operator,
+        email=email,
+        code_hash=hash_otp(otp, "email-change-otp"),
+        expires_at=timezone.now() + timedelta(seconds=ttl),
+    )
+    try:
+        send_email_change_otp(email, name, otp, ttl)
+    except Exception:
+        EmailChangeChallenge.objects.filter(email=email).delete()
+        logger.exception("No se pudo enviar el OTP de cambio de correo a %s", email)
+        raise ValueError("No se pudo enviar el código. Inténtalo de nuevo.") from None
+    return {
+        "pending_email": email,
+        "email": email,
+        "expires_in": ttl,
+        "detail": EMAIL_CHANGE_SENT,
+    }
+
+
+def consume_email_change_otp(*, email, otp, user=None, operator=None) -> EmailChangeChallenge:
+    email = (email or "").strip().lower()
+    otp = (otp or "").strip()
+    qs = EmailChangeChallenge.objects.filter(email=email)
+    if user is not None:
+        qs = qs.filter(user=user, operator__isnull=True)
+    elif operator is not None:
+        qs = qs.filter(operator=operator)
+    else:
+        raise ValueError("Solicita un código nuevo.")
+    challenge = qs.first()
+    if not challenge:
+        raise ValueError("Solicita un código nuevo.")
+    if timezone.now() >= challenge.expires_at:
+        challenge.delete()
+        raise ValueError("El código caducó. Solicita uno nuevo.")
+    if challenge.attempts >= _max_attempts():
+        challenge.delete()
+        raise ValueError("Demasiados intentos. Solicita un código nuevo.")
+    if not secrets.compare_digest(
+        challenge.code_hash,
+        hash_otp(otp, "email-change-otp"),
+    ):
+        challenge.attempts += 1
+        challenge.save(update_fields=["attempts"])
+        raise ValueError("El código no es válido.")
+    return challenge
 
 
 def consume_monitor_password(*, email, password) -> Operator:

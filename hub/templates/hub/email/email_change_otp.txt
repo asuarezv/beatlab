@@ -1,0 +1,12 @@
+{% autoescape off %}Hola {{ name }},
+
+Tu código para confirmar el nuevo correo en BeatLab es:
+
+  {{ otp }}
+
+Caduca en {{ minutes }} minutos. No lo compartas con nadie.
+Si no pediste cambiar tu correo, ignora este mensaje.
+
+BeatLab · NynuSoft
+{{ site_url }}
+{% endautoescape %}
