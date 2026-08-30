@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import GlossaryTerm from "../components/GlossaryTerm.jsx";
 
 function HeartbeatIcon() {
   return (
@@ -33,7 +34,9 @@ export default function Landing() {
         <p className="eyebrow">SaaS</p>
         <h1>BeatLab Hub</h1>
         <p className="muted landing-lead">
-          Controla la salud de tus systems. Demo de 15 días con 10.000 Beats.
+          Controla la salud de tus{" "}
+          <GlossaryTerm termId="system">systems</GlossaryTerm>. Demo de 15 días
+          con 10.000 Beats.
         </p>
         <div className="landing-actions">
           <Link className="landing-cta" to="/registro">

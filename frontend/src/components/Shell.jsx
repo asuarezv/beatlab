@@ -35,6 +35,7 @@ export default function Shell({ session, onSession, children }) {
           <NavLink to="/operators">Operators</NavLink>
           <NavLink to="/tipos">Tipos</NavLink>
           <NavLink to="/beats">Beats</NavLink>
+          <NavLink to="/glosario">Glosario</NavLink>
           <button type="button" onClick={handleLogout}>
             Salir
           </button>
