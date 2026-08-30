@@ -592,6 +592,11 @@ input.invalid {
   }
 }
 
+.glossary-term-glue {
+  display: inline;
+  white-space: nowrap;
+}
+
 button.glossary-term {
   display: inline;
   width: auto;

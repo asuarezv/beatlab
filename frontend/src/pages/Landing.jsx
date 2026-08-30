@@ -2,6 +2,14 @@ import { useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import GlossaryTerm from "../components/GlossaryTerm.jsx";
 
+function GlossaryTermGlue({ termId, children, punct }) {
+  return (
+    <span className="glossary-term-glue">
+      <GlossaryTerm termId={termId}>{children}</GlossaryTerm>{punct}
+    </span>
+  );
+}
+
 const CHANNELS = ["Web", "App móvil", "API", "Job"];
 
 const STEPS = [
@@ -10,8 +18,10 @@ const STEPS = [
     body: (
       <>
         Cada aplicación o proceso manda un{" "}
-        <GlossaryTerm termId="beat">Beat</GlossaryTerm>: la señal de que está
-        vivo y cómo está.
+        <GlossaryTermGlue termId="beat" punct=":">
+          Beat
+        </GlossaryTermGlue>{" "}
+        la señal de que está vivo y cómo está.
       </>
     ),
   },
@@ -20,8 +30,11 @@ const STEPS = [
     body: (
       <>
         Todos los <GlossaryTerm termId="beat">Beats</GlossaryTerm> van cifrados
-        hacia el <GlossaryTerm termId="hub">Hub</GlossaryTerm>. El envío queda
-        protegido hasta la central.
+        hacia el{" "}
+        <GlossaryTermGlue termId="hub" punct=".">
+          Hub
+        </GlossaryTermGlue>{" "}
+        El envío queda protegido hasta la central.
       </>
     ),
   },
@@ -30,8 +43,10 @@ const STEPS = [
     body: (
       <>
         La central reconoce cada{" "}
-        <GlossaryTerm termId="beat">Beat</GlossaryTerm>, lo clasifica y lo deja
-        listo para tu equipo.
+        <GlossaryTermGlue termId="beat" punct=",">
+          Beat
+        </GlossaryTermGlue>{" "}
+        lo clasifica y lo deja listo para tu equipo.
       </>
     ),
   },
@@ -40,7 +55,10 @@ const STEPS = [
     body: (
       <>
         El <GlossaryTerm termId="operator">Operator</GlossaryTerm> lo recibe en{" "}
-        <GlossaryTerm termId="monitor">Monitor</GlossaryTerm>, en su teléfono.
+        <GlossaryTermGlue termId="monitor" punct=",">
+          Monitor
+        </GlossaryTermGlue>{" "}
+        en su teléfono.
       </>
     ),
   },
@@ -70,8 +88,10 @@ export default function Landing() {
         </h1>
         <p className="muted landing-lead">
           Controla la salud de tus{" "}
-          <GlossaryTerm termId="system">systems</GlossaryTerm>. Demo de 15 días
-          con 10.000 Beats.
+          <GlossaryTermGlue termId="system" punct=".">
+            systems
+          </GlossaryTermGlue>{" "}
+          Demo de 15 días con 10.000 Beats.
         </p>
         <div className="landing-actions">
           <Link className="landing-cta" to="/registro">

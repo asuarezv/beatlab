@@ -18,12 +18,13 @@ export default function GlossaryTerm({ termId, children }) {
         aria-label={`Definición de ${label}`}
       >
         {children}
-      </button>
-      <GlossaryDialog
-        entry={entry}
-        open={open}
-        onClose={() => setOpen(false)}
-      />
+      </button>{open ? (
+        <GlossaryDialog
+          entry={entry}
+          open={open}
+          onClose={() => setOpen(false)}
+        />
+      ) : null}
     </>
   );
 }
