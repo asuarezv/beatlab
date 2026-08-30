@@ -1,5 +1,23 @@
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { getGlossaryEntry } from "../data/glossary.js";
+
+function GlossaryLink({ termId, children, openId, onOpen }) {
+  const linked = getGlossaryEntry(termId);
+  const label = linked?.term ?? "término";
+  return (
+    <button
+      type="button"
+      className="glossary-term"
+      onClick={() => onOpen(termId)}
+      aria-haspopup="dialog"
+      aria-expanded={openId === termId}
+      aria-label={`Definición de ${label}`}
+    >
+      {children}
+    </button>
+  );
+}
 
 export default function GlossaryDialog({ entry, open, onClose }) {
   const titleId = useId();
@@ -8,7 +26,34 @@ export default function GlossaryDialog({ entry, open, onClose }) {
   const closeRef = useRef(null);
   const lastFocusRef = useRef(null);
   const onCloseRef = useRef(onClose);
+  const nestedOpenRef = useRef(false);
+  const [nestedId, setNestedId] = useState(null);
+  const nestedEntry = getGlossaryEntry(nestedId);
   onCloseRef.current = onClose;
+  nestedOpenRef.current = Boolean(nestedId);
+
+  let linkIndex = 0;
+  function term(termId, text) {
+    return (
+      <GlossaryLink
+        key={`${termId}-${linkIndex++}`}
+        termId={termId}
+        openId={nestedId}
+        onOpen={setNestedId}
+      >
+        {text}
+      </GlossaryLink>
+    );
+  }
+
+  const definition =
+    typeof entry?.definition === "function"
+      ? entry.definition(term)
+      : entry?.definition;
+
+  useEffect(() => {
+    if (!open) setNestedId(null);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -17,6 +62,8 @@ export default function GlossaryDialog({ entry, open, onClose }) {
     closeRef.current?.focus();
 
     function onKey(event) {
+      if (nestedOpenRef.current) return;
+
       if (event.key === "Escape") {
         event.preventDefault();
         event.stopImmediatePropagation();
@@ -59,9 +106,11 @@ export default function GlossaryDialog({ entry, open, onClose }) {
   if (!open || !entry) return null;
 
   return createPortal(
+    <>
     <div
       className="glossary-backdrop"
       onMouseDown={(event) => {
+        if (nestedId) return;
         if (event.target === event.currentTarget) onClose();
       }}
     >
@@ -94,7 +143,7 @@ export default function GlossaryDialog({ entry, open, onClose }) {
           <p className="muted glossary-fullname">{entry.fullName}</p>
         ) : null}
         <div id={descId} className="glossary-body">
-          <p className="glossary-definition">{entry.definition}</p>
+          <p className="glossary-definition">{definition}</p>
           {entry.examples?.length ? (
             <>
               {entry.examplesLabel ? (
@@ -111,7 +160,13 @@ export default function GlossaryDialog({ entry, open, onClose }) {
           ) : null}
         </div>
       </div>
-    </div>,
+    </div>
+    <GlossaryDialog
+      entry={nestedEntry}
+      open={Boolean(nestedId)}
+      onClose={() => setNestedId(null)}
+    />
+    </>,
     document.body,
   );
 }
