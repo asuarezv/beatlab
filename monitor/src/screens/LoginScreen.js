@@ -129,7 +129,7 @@ export default function LoginScreen({ onLogin }) {
         keyboardShouldPersistTaps="handled"
       >
         <Image
-          source={require("../../assets/nynusoft-logo.png")}
+          source={require("../assets/nynusoft-logo.png")}
           style={styles.logo}
           resizeMode="contain"
           accessibilityLabel="NynuSoft"
