@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-main
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.OVH_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -p 22 -H "${{ secrets.OVH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Rsync app
+        run: |
+          rsync -az --delete \
+            --exclude '.git' \
+            --exclude '.github' \
+            --exclude '.venv' \
+            --exclude 'venv' \
+            --exclude '__pycache__' \
+            --exclude '*.pyc' \
+            --exclude '.env' \
+            --exclude 'node_modules' \
+            -e "ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=accept-new" \
+            ./ ${{ secrets.OVH_USER }}@${{ secrets.OVH_HOST }}:/opt/beatlab/
+
+      - name: Publish hub
+        run: |
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=accept-new \
+            ${{ secrets.OVH_USER }}@${{ secrets.OVH_HOST }} << 'EOF'
+          set -e
+          mkdir -p /var/www/hub /var/www/certbot
+          cp /opt/beatlab/deploy/hub-index.html /var/www/hub/index.html
+          cp /opt/beatlab/deploy/nginx-hub.conf /etc/nginx/sites-available/hub
+          ln -sfn /etc/nginx/sites-available/hub /etc/nginx/sites-enabled/hub
+          nginx -t
+          systemctl reload nginx
+          EOF
