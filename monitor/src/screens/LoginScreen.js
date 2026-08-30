@@ -3,35 +3,80 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
-  View,
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { colors } from "../theme";
-import { requestOperatorOtp, verifyOperatorOtp } from "../api";
+import {
+  loginOperatorPassword,
+  requestOperatorOtp,
+  verifyOperatorOtp,
+} from "../api";
 import OtpInput from "../components/OtpInput";
+import PasswordField from "../components/PasswordField";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function LoginScreen({ onLogin }) {
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [otp, setOtp] = useState("");
   const [step, setStep] = useState("email");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const verifyingRef = useRef(false);
 
-  async function handleRequest() {
-    const nextEmail = email.trim();
-    setEmail(nextEmail);
+  function applySession(data) {
+    onLogin({
+      token: data.token,
+      operator: data.operator,
+      company: data.company,
+    });
+  }
+
+  function validEmail(nextEmail) {
     if (!nextEmail) {
       setError("El correo es obligatorio.");
-      return;
+      return false;
     }
     if (!EMAIL_RE.test(nextEmail)) {
       setError("El correo no es válido.");
+      return false;
+    }
+    return true;
+  }
+
+  async function handlePasswordLogin() {
+    const nextEmail = email.trim();
+    const nextPassword = password.trim();
+    setEmail(nextEmail);
+    setPassword(nextPassword);
+    if (!validEmail(nextEmail)) {
+      return;
+    }
+    if (!nextPassword) {
+      setError("El correo y la contraseña son obligatorios.");
+      return;
+    }
+    setError("");
+    setBusy(true);
+    try {
+      applySession(await loginOperatorPassword(nextEmail, nextPassword));
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleRequest() {
+    const nextEmail = email.trim();
+    setEmail(nextEmail);
+    if (!validEmail(nextEmail)) {
       return;
     }
     setError("");
@@ -61,12 +106,7 @@ export default function LoginScreen({ onLogin }) {
     setError("");
     setBusy(true);
     try {
-      const data = await verifyOperatorOtp(email.trim(), next);
-      onLogin({
-        token: data.token,
-        operator: data.operator,
-        company: data.company,
-      });
+      applySession(await verifyOperatorOtp(email.trim(), next));
     } catch (err) {
       setError(err.message);
     } finally {
@@ -81,76 +121,101 @@ export default function LoginScreen({ onLogin }) {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <StatusBar style="light" />
-      <Text style={styles.eyebrow}>BeatLab</Text>
-      <Text style={styles.title}>Monitor</Text>
-      {step === "email" ? (
-        <>
-          <Text style={styles.lead}>
-            Entra con el correo que te dio de alta el Hub. Te enviamos un
-            código de 6 dígitos.
-          </Text>
-          <Text style={styles.label}>Correo</Text>
-          <TextInput
-            style={styles.input}
-            value={email}
-            onChangeText={setEmail}
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="email-address"
-            autoComplete="email"
-            textContentType="emailAddress"
-          />
-          {error ? <Text style={styles.error}>{error}</Text> : null}
-          <Pressable
-            style={[styles.button, busy && styles.disabled]}
-            onPress={handleRequest}
-            disabled={busy}
-          >
-            <Text style={styles.buttonText}>
-              {busy ? "Enviando…" : "Enviar código"}
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        keyboardShouldPersistTaps="handled"
+      >
+        <Text style={styles.eyebrow}>BeatLab</Text>
+        <Text style={styles.title}>Monitor</Text>
+        {step === "email" ? (
+          <>
+            <Text style={styles.lead}>
+              Entra con tu correo y contraseña, o te enviamos un código de 6
+              dígitos.
             </Text>
-          </Pressable>
-        </>
-      ) : (
-        <>
-          <Text style={styles.lead}>
-            Enviamos un código a <Text style={styles.strong}>{email}</Text>.
-          </Text>
-          <Text style={styles.label}>Código</Text>
-          <OtpInput
-            value={otp}
-            onChange={(next) => {
-              setOtp(next);
-              if (error) setError("");
-            }}
-            onComplete={verifyOtp}
-            disabled={busy}
-            invalid={Boolean(error)}
-          />
-          {error ? <Text style={styles.error}>{error}</Text> : null}
-          <Pressable
-            style={[styles.button, (busy || otp.length !== 6) && styles.disabled]}
-            onPress={() => verifyOtp(otp)}
-            disabled={busy || otp.length !== 6}
-          >
-            <Text style={styles.buttonText}>
-              {busy ? "Verificando…" : "Entrar"}
+            <Text style={styles.label}>Correo</Text>
+            <TextInput
+              style={styles.input}
+              value={email}
+              onChangeText={setEmail}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="email-address"
+              autoComplete="email"
+              textContentType="emailAddress"
+            />
+            <Text style={styles.label}>Contraseña</Text>
+            <PasswordField
+              value={password}
+              onChangeText={setPassword}
+              visible={showPassword}
+              onToggle={() => setShowPassword((value) => !value)}
+              autoComplete="password"
+              textContentType="password"
+            />
+            {error ? <Text style={styles.error}>{error}</Text> : null}
+            <Pressable
+              style={[styles.button, busy && styles.disabled]}
+              onPress={handlePasswordLogin}
+              disabled={busy}
+            >
+              <Text style={styles.buttonText}>
+                {busy ? "Entrando…" : "Entrar"}
+              </Text>
+            </Pressable>
+            <Pressable
+              style={styles.back}
+              disabled={busy}
+              onPress={handleRequest}
+            >
+              <Text style={styles.backText}>
+                {busy ? "Enviando…" : "No tengo contraseña o la olvidé"}
+              </Text>
+            </Pressable>
+          </>
+        ) : (
+          <>
+            <Text style={styles.lead}>
+              Enviamos un código a <Text style={styles.strong}>{email}</Text>.
             </Text>
-          </Pressable>
-          <Pressable
-            style={styles.back}
-            disabled={busy}
-            onPress={() => {
-              setOtp("");
-              setError("");
-              setStep("email");
-            }}
-          >
-            <Text style={styles.backText}>Volver</Text>
-          </Pressable>
-        </>
-      )}
-      <View style={{ height: 24 }} />
+            <Text style={styles.label}>Código</Text>
+            <OtpInput
+              value={otp}
+              onChange={(next) => {
+                setOtp(next);
+                if (error) setError("");
+              }}
+              onComplete={verifyOtp}
+              disabled={busy}
+              invalid={Boolean(error)}
+            />
+            {error ? <Text style={styles.error}>{error}</Text> : null}
+            <Pressable
+              style={[
+                styles.button,
+                (busy || otp.length !== 6) && styles.disabled,
+              ]}
+              onPress={() => verifyOtp(otp)}
+              disabled={busy || otp.length !== 6}
+            >
+              <Text style={styles.buttonText}>
+                {busy ? "Verificando…" : "Entrar"}
+              </Text>
+            </Pressable>
+            <Pressable
+              style={styles.back}
+              disabled={busy}
+              onPress={() => {
+                setOtp("");
+                setError("");
+                setStep("email");
+              }}
+            >
+              <Text style={styles.backText}>Volver</Text>
+            </Pressable>
+          </>
+        )}
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
@@ -159,8 +224,11 @@ const styles = StyleSheet.create({
   wrap: {
     flex: 1,
     backgroundColor: colors.bg,
+  },
+  scroll: {
     paddingHorizontal: 24,
     paddingTop: 72,
+    paddingBottom: 32,
   },
   eyebrow: {
     color: colors.accent,

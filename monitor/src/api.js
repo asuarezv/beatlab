@@ -90,6 +90,50 @@ export function verifyOperatorOtp(email, otp) {
     .then(readJson);
 }
 
+export function loginOperatorPassword(email, password) {
+  return fetch(`${hubUrl()}/api/monitor/auth/login/`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ email, password }),
+  })
+    .catch(() => {
+      throw contactHubError();
+    })
+    .then(readJson);
+}
+
+export function fetchOperatorMe(token) {
+  return fetch(`${hubUrl()}/api/monitor/auth/me/`, {
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+  })
+    .catch(() => {
+      throw contactHubError();
+    })
+    .then(readJson);
+}
+
+export function setOperatorPassword(token, payload) {
+  return fetch(`${hubUrl()}/api/monitor/auth/password/`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  })
+    .catch(() => {
+      throw contactHubError();
+    })
+    .then(readJson);
+}
+
 export function listOperatorBeats(token) {
   return fetch(`${hubUrl()}/api/monitor/beats/`, {
     headers: {

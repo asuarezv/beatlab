@@ -19,7 +19,7 @@ function formatWhen(value) {
   }
 }
 
-export default function BeatsScreen({ session, onLogout }) {
+export default function BeatsScreen({ session, onLogout, onProfile }) {
   const [items, setItems] = useState([]);
   const [live, setLive] = useState(false);
   const [error, setError] = useState("");
@@ -91,9 +91,14 @@ export default function BeatsScreen({ session, onLogout }) {
             {session.operator?.display_name} · {live ? "en vivo" : "reconectando"}
           </Text>
         </View>
-        <Pressable onPress={onLogout}>
-          <Text style={styles.logout}>Salir</Text>
-        </Pressable>
+        <View style={styles.actions}>
+          <Pressable onPress={onProfile}>
+            <Text style={styles.logout}>Perfil</Text>
+          </Pressable>
+          <Pressable onPress={onLogout}>
+            <Text style={styles.logout}>Salir</Text>
+          </Pressable>
+        </View>
       </View>
       {error ? <Text style={styles.error}>{error}</Text> : null}
       <FlatList
@@ -148,6 +153,10 @@ const styles = StyleSheet.create({
   muted: {
     color: colors.muted,
     marginTop: 4,
+  },
+  actions: {
+    alignItems: "flex-end",
+    gap: 10,
   },
   logout: {
     color: colors.muted,
