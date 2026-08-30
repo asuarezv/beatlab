@@ -15,6 +15,10 @@
     },
     "extra": {
       "hubUrl": "https://hub.nynusoft.com"
-    }
+    },
+    "plugins": [
+      "expo-asset",
+      "expo-font"
+    ]
   }
 }
