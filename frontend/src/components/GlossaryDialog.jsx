@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef } from "react";
+import { createPortal } from "react-dom";
 
 export default function GlossaryDialog({ entry, open, onClose }) {
   const titleId = useId();
@@ -57,7 +58,7 @@ export default function GlossaryDialog({ entry, open, onClose }) {
 
   if (!open || !entry) return null;
 
-  return (
+  return createPortal(
     <div
       className="glossary-backdrop"
       onMouseDown={(event) => {
@@ -110,6 +111,7 @@ export default function GlossaryDialog({ entry, open, onClose }) {
           ) : null}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
