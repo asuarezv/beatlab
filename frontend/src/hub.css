@@ -307,6 +307,14 @@ nav button {
   text-align: center;
 }
 
+.auth-terms {
+  margin: 0.65rem 0 0;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
 .grid > .card,
 .grid > .card-link {
   min-height: 8.5rem;
@@ -460,6 +468,10 @@ button.glossary-term:focus-visible {
   background: rgba(0, 0, 0, 0.62);
 }
 
+.glossary-backdrop + .glossary-backdrop {
+  z-index: 90;
+}
+
 .glossary-dialog {
   position: relative;
   width: min(100%, 26rem);
@@ -468,6 +480,27 @@ button.glossary-term:focus-visible {
   border: 1px solid var(--line);
   border-radius: 14px;
   padding: 1.5rem 1.4rem 1.45rem;
+}
+
+.glossary-dialog.terms-dialog {
+  width: min(100%, 34rem);
+  max-height: min(88vh, 42rem);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.terms-body {
+  display: grid;
+  gap: 0.85rem;
+  overflow: auto;
+  padding-right: 0.15rem;
+}
+
+.terms-body p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
 }
 
 .glossary-dialog-bar {

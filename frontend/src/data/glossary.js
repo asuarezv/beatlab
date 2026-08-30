@@ -4,7 +4,7 @@ export const GLOSSARY_ENTRIES = [
     term: "Beat",
     fullName: "Señal de salud",
     definition:
-      "Un Beat es un mensaje emitido por un System, autenticado con JWT y clasificado por un tipo de Beat. Es una señal de salud de ese System. El Operator lo ve en su panel y, cuando aplica, es el origen de una notificación en Monitor.",
+      "Un Beat es un evento o señal de salud autenticada: un mensaje que emite un System, firmado con JWT y clasificado por un tipo de Beat. El Operator lo ve en su panel y, cuando aplica, es el origen de una notificación en Monitor.",
   },
   {
     id: "beatlab",

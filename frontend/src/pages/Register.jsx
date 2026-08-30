@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import PasswordField from "../components/PasswordField.jsx";
+import TermsDialog from "../components/TermsDialog.jsx";
 import { confirmRegisterOtp, requestRegisterOtp } from "../api.js";
 import {
   COMPANY_NAME_ERROR,
@@ -25,6 +26,7 @@ export default function Register({ onLogin }) {
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
   const [emailBlurred, setEmailBlurred] = useState(false);
+  const [termsOpen, setTermsOpen] = useState(false);
 
   const emailInvalid = Boolean(email) && !isValidEmail(email.trim());
   const pass = password.trim();
@@ -224,6 +226,20 @@ export default function Register({ onLogin }) {
       <p className="auth-switch">
         ¿Ya tienes Hub? <Link to="/entrar">Entrar</Link>
       </p>
+      <p className="auth-terms">
+        Al crear tu Hub aceptas los{" "}
+        <button
+          type="button"
+          className="glossary-term"
+          onClick={() => setTermsOpen(true)}
+          aria-haspopup="dialog"
+          aria-expanded={termsOpen}
+        >
+          términos y condiciones
+        </button>
+        .
+      </p>
+      <TermsDialog open={termsOpen} onClose={() => setTermsOpen(false)} />
     </form>
   );
 }

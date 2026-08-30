@@ -18,6 +18,7 @@ export default function GlossaryDialog({ entry, open, onClose }) {
     function onKey(event) {
       if (event.key === "Escape") {
         event.preventDefault();
+        event.stopImmediatePropagation();
         onCloseRef.current();
         return;
       }
