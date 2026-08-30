@@ -6,6 +6,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { StatusBar } from "expo-status-bar";
 import { colors } from "../theme";
 import { listOperatorBeats, monitorWsUrl } from "../api";
@@ -84,19 +85,37 @@ export default function BeatsScreen({ session, onLogout, onProfile }) {
     <View style={styles.wrap}>
       <StatusBar style="light" />
       <View style={styles.top}>
-        <View>
+        <View style={styles.brand}>
           <Text style={styles.eyebrow}>Monitor</Text>
-          <Text style={styles.title}>{session.company?.name || "Hub"}</Text>
-          <Text style={styles.muted}>
+          <Text style={styles.title} numberOfLines={1}>
+            {session.company?.name || "Hub"}
+          </Text>
+          <Text style={styles.muted} numberOfLines={1}>
             {session.operator?.display_name} · {live ? "en vivo" : "reconectando"}
           </Text>
         </View>
         <View style={styles.actions}>
-          <Pressable onPress={onProfile}>
-            <Text style={styles.logout}>Perfil</Text>
+          <Pressable
+            onPress={onProfile}
+            accessibilityRole="button"
+            accessibilityLabel="Perfil"
+            hitSlop={8}
+            style={styles.iconBtn}
+          >
+            <Ionicons
+              name="person-circle-outline"
+              size={26}
+              color={colors.accent}
+            />
           </Pressable>
-          <Pressable onPress={onLogout}>
-            <Text style={styles.logout}>Salir</Text>
+          <Pressable
+            onPress={onLogout}
+            accessibilityRole="button"
+            accessibilityLabel="Salir"
+            hitSlop={8}
+            style={styles.iconBtn}
+          >
+            <Ionicons name="log-out-outline" size={26} color={colors.accent} />
           </Pressable>
         </View>
       </View>
@@ -145,6 +164,10 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginBottom: 4,
   },
+  brand: {
+    flex: 1,
+    minWidth: 0,
+  },
   title: {
     color: colors.text,
     fontSize: 24,
@@ -155,12 +178,16 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   actions: {
-    alignItems: "flex-end",
-    gap: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    flexShrink: 0,
+    gap: 2,
   },
-  logout: {
-    color: colors.muted,
-    paddingTop: 6,
+  iconBtn: {
+    width: 40,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
   },
   error: {
     color: colors.danger,
