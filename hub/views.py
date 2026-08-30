@@ -383,7 +383,7 @@ def monitor_login(request):
     )
     if user is None or not user.is_active:
         return Response(
-            {"detail": "Usuario o contraseña no válidos"},
+            {"detail": "Usuario o contraseña incorrectos"},
             status=status.HTTP_400_BAD_REQUEST,
         )
     operator = (
@@ -394,7 +394,7 @@ def monitor_login(request):
     )
     if not operator:
         return Response(
-            {"detail": "Este usuario no es Operator."},
+            {"detail": "No hay Operator con ese usuario."},
             status=status.HTTP_400_BAD_REQUEST,
         )
     return Response(

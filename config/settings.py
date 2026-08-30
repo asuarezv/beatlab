@@ -79,10 +79,12 @@ CHANNEL_LAYERS = {
 }
 
 _default_db = "sqlite:///" + str(BASE_DIR / "db.sqlite3")
+# Daphne/ASGI: conn_max_age>0 filtra conexiones por hilo y satura PostgreSQL.
 DATABASES = {
     "default": dj_database_url.config(
         default=os.environ.get("DATABASE_URL", _default_db),
-        conn_max_age=60,
+        conn_max_age=int(os.environ.get("CONN_MAX_AGE", "0")),
+        conn_health_checks=True,
     )
 }
 
@@ -115,6 +117,7 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
     ],
+    "EXCEPTION_HANDLER": "hub.exceptions.api_exception_handler",
 }
 
 EMAIL_HOST = os.environ.get("EMAIL_HOST", "smtp.hostinger.com").strip()

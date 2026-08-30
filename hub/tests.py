@@ -133,6 +133,14 @@ class IngestAndMonitorTests(APITestCase):
             format="json",
         )
         self.assertEqual(denied.status_code, 400)
+        self.assertEqual(denied.data["detail"], "No hay Operator con ese usuario.")
+        wrong = self.client.post(
+            "/api/monitor/auth/login/",
+            {"username": "opdemo", "password": "noesesta"},
+            format="json",
+        )
+        self.assertEqual(wrong.status_code, 400)
+        self.assertEqual(wrong.data["detail"], "Usuario o contraseña incorrectos")
         login = self.client.post(
             "/api/monitor/auth/login/",
             {"username": "opdemo", "password": "password12"},
@@ -172,3 +180,12 @@ class IngestAndMonitorTests(APITestCase):
         hello = await communicator.receive_json_from()
         self.assertEqual(hello.get("type"), "ready")
         await communicator.disconnect()
+
+    def test_operational_error_returns_json(self):
+        from django.db.utils import OperationalError
+
+        from .exceptions import api_exception_handler
+
+        response = api_exception_handler(OperationalError("slots"), {})
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("base de datos", response.data["detail"])

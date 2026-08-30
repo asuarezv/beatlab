@@ -11,17 +11,53 @@ export function monitorWsUrl(token) {
   return `${base}/ws/monitor/?token=${encodeURIComponent(token)}`;
 }
 
+function detailMessage(data) {
+  const detail = data?.detail;
+  if (typeof detail === "string" && detail.trim()) {
+    return detail;
+  }
+  if (Array.isArray(detail) && typeof detail[0] === "string" && detail[0].trim()) {
+    return detail[0];
+  }
+  return "";
+}
+
+function messageFromFailure(response, data) {
+  const fromApi = detailMessage(data);
+  if (fromApi) {
+    return fromApi;
+  }
+  const status = response.status;
+  if (status === 401 || status === 403) {
+    return "Usuario o contraseña incorrectos";
+  }
+  if (status === 404) {
+    return "No se encontró el servicio de login en el Hub (404).";
+  }
+  if (status === 502 || status === 503 || status === 504) {
+    return "El Hub no está disponible. Intenta de nuevo.";
+  }
+  if (status >= 500) {
+    return "Error interno del Hub. Intenta de nuevo.";
+  }
+  if (status) {
+    return `No se pudo completar la acción (${status}).`;
+  }
+  return "No se pudo completar la acción";
+}
+
 async function readJson(response) {
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const message =
-      (typeof data.detail === "string" && data.detail) ||
-      "No se pudo completar la acción";
-    const error = new Error(message);
+    const error = new Error(messageFromFailure(response, data));
     error.status = response.status;
     throw error;
   }
   return data;
+}
+
+function contactHubError() {
+  return new Error("No se pudo contactar el Hub.");
 }
 
 export function loginOperator(username, password) {
@@ -32,7 +68,11 @@ export function loginOperator(username, password) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ username, password }),
-  }).then(readJson);
+  })
+    .catch(() => {
+      throw contactHubError();
+    })
+    .then(readJson);
 }
 
 export function listOperatorBeats(token) {
@@ -41,5 +81,9 @@ export function listOperatorBeats(token) {
       Accept: "application/json",
       Authorization: `Bearer ${token}`,
     },
-  }).then(readJson);
+  })
+    .catch(() => {
+      throw contactHubError();
+    })
+    .then(readJson);
 }
