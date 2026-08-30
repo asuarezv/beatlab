@@ -6,6 +6,10 @@ export function hubUrl() {
   return (extra.hubUrl || "https://hub.nynusoft.com").replace(/\/$/, "");
 }
 
+export function recoverAccountUrl() {
+  return `${hubUrl()}/recuperar`;
+}
+
 export function monitorWsUrl(token) {
   const base = hubUrl().replace(/^http/, "ws");
   return `${base}/ws/monitor/?token=${encodeURIComponent(token)}`;

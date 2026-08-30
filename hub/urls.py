@@ -31,5 +31,25 @@ urlpatterns = [
     path("monitor/auth/verify-email/", views.monitor_verify_email, name="monitor-verify-email"),
     path("monitor/auth/password/", views.monitor_password, name="monitor-password"),
     path("monitor/beats/", views.monitor_beats, name="monitor-beats"),
+    path(
+        "public/operator/invite/",
+        views.public_operator_invite_info,
+        name="public-operator-invite",
+    ),
+    path(
+        "public/operator/verify/",
+        views.public_operator_verify,
+        name="public-operator-verify",
+    ),
+    path(
+        "public/operator/password/",
+        views.public_operator_password,
+        name="public-operator-password",
+    ),
+    path(
+        "public/operator/recover/",
+        views.public_operator_recover,
+        name="public-operator-recover",
+    ),
     path("", include(router.urls)),
 ]

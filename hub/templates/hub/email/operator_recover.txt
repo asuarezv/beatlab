@@ -1,0 +1,16 @@
+{% autoescape off %}Hola {{ name }},
+
+Usa este código para elegir la contraseña con la que entrarás a Monitor:
+
+  {{ otp }}
+
+Abre este vínculo, escribe el código y elige tu contraseña:
+
+  {{ recover_url }}
+
+Caduca en {{ minutes }} minutos. No lo compartas con nadie.
+Si no pediste recuperar tu cuenta, ignora este correo.
+
+BeatLab · NynuSoft
+{{ site_url }}
+{% endautoescape %}

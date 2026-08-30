@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="supported-color-schemes" content="dark">
+  <title>Te invitaron a Monitor</title>
+</head>
+<body style="margin:0;padding:0;background-color:#0b0f14;color:#e8eef5;font-family:Arial,Helvetica,sans-serif;">
+  <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;color:#0b0f14;">
+    {{ inviter_name }} te invitó a Monitor de {{ company_name }}. Tu código es {{ otp }}.
+  </div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#0b0f14;">
+    <tr>
+      <td align="center" style="padding:28px 16px;">
+        <table role="presentation" width="560" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:560px;background-color:#121821;border:1px solid #223042;border-radius:12px;">
+          <tr>
+            <td style="padding:22px 28px 16px 28px;border-bottom:1px solid #223042;">
+              <a href="{{ site_url }}" style="text-decoration:none;">
+                <img src="{{ logo_url }}" width="174" height="36" alt="NynuSoft" style="display:block;border:0;width:174px;height:36px;">
+              </a>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:28px 28px 8px 28px;">
+              <p style="margin:0 0 8px 0;color:#6ee7ff;font-size:12px;letter-spacing:0.16em;text-transform:uppercase;font-weight:700;">
+                BeatLab Monitor
+              </p>
+              <h1 style="margin:0 0 16px 0;color:#e8eef5;font-size:26px;line-height:1.25;font-weight:700;letter-spacing:-0.03em;">
+                Te invitaron a Monitor
+              </h1>
+              <p style="margin:0 0 8px 0;color:#e8eef5;font-size:16px;line-height:1.5;">
+                Hola {{ name }},
+              </p>
+              <p style="margin:0 0 16px 0;color:#9aa8b8;font-size:15px;line-height:1.5;">
+                <span style="color:#e8eef5;font-weight:700;">{{ inviter_name }}</span>
+                te invitó a Monitor de
+                <span style="color:#e8eef5;font-weight:700;">{{ company_name }}</span>.
+              </p>
+              <p style="margin:0 0 22px 0;color:#9aa8b8;font-size:15px;line-height:1.5;">
+                Monitor es la app donde ves el pulso de los sistemas de tu empresa y recibes avisos.
+                Abre el vínculo, escribe este código y elige tu contraseña.
+              </p>
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td align="center" style="background-color:#0b1017;border:1px solid #223042;border-radius:8px;padding:18px 12px;">
+                    <p style="margin:0;color:#6ee7ff;font-size:32px;line-height:1.2;letter-spacing:0.28em;font-weight:700;font-family:'Courier New',Courier,monospace;">
+                      {{ otp }}
+                    </p>
+                  </td>
+                </tr>
+              </table>
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:22px;">
+                <tr>
+                  <td align="center">
+                    <a href="{{ invite_url }}" style="display:inline-block;background-color:#6ee7ff;color:#042028;font-size:15px;font-weight:700;text-decoration:none;border-radius:8px;padding:12px 22px;">
+                      Abrir invitación
+                    </a>
+                  </td>
+                </tr>
+              </table>
+              <p style="margin:18px 0 0 0;color:#9aa8b8;font-size:13px;line-height:1.5;word-break:break-all;">
+                O copia este vínculo:<br>
+                <a href="{{ invite_url }}" style="color:#6ee7ff;text-decoration:none;">{{ invite_url }}</a>
+              </p>
+              <p style="margin:20px 0 0 0;color:#9aa8b8;font-size:14px;line-height:1.5;">
+                Caduca en <span style="color:#e8eef5;font-weight:700;">{{ minutes }} minutos</span>.
+                No lo compartas con nadie.
+              </p>
+              <p style="margin:10px 0 0 0;color:#9aa8b8;font-size:14px;line-height:1.5;">
+                Si no esperabas esta invitación, ignora este correo.
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:22px 28px 24px 28px;border-top:1px solid #223042;">
+              <p style="margin:0 0 4px 0;color:#9aa8b8;font-size:12px;line-height:1.5;">
+                Enviado por NynuSoft · BeatLab
+              </p>
+              <p style="margin:0;color:#9aa8b8;font-size:12px;line-height:1.5;">
+                <a href="{{ site_url }}" style="color:#6ee7ff;text-decoration:none;">{{ site_url }}</a>
+                &nbsp;·&nbsp;© {{ year }}
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

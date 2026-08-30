@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import {
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -12,6 +13,7 @@ import { StatusBar } from "expo-status-bar";
 import { colors } from "../theme";
 import {
   loginOperatorPassword,
+  recoverAccountUrl,
   requestOperatorOtp,
   verifyOperatorOtp,
 } from "../api";
@@ -166,10 +168,17 @@ export default function LoginScreen({ onLogin }) {
             <Pressable
               style={styles.back}
               disabled={busy}
+              onPress={() => Linking.openURL(recoverAccountUrl())}
+            >
+              <Text style={styles.backText}>Recuperar cuenta</Text>
+            </Pressable>
+            <Pressable
+              style={styles.back}
+              disabled={busy}
               onPress={handleRequest}
             >
               <Text style={styles.backText}>
-                {busy ? "Enviando…" : "No tengo contraseña o la olvidé"}
+                {busy ? "Enviando…" : "Entrar con un código"}
               </Text>
             </Pressable>
           </>

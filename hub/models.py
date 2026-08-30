@@ -143,6 +143,8 @@ class OperatorInviteChallenge(models.Model):
     first_name = models.CharField(max_length=80)
     last_name = models.CharField(max_length=80)
     email = models.EmailField(unique=True)
+    inviter_name = models.CharField(max_length=160, blank=True, default="")
+    token = models.CharField(max_length=64, unique=True)
     code_hash = models.CharField(max_length=64)
     expires_at = models.DateTimeField()
     attempts = models.PositiveSmallIntegerField(default=0)

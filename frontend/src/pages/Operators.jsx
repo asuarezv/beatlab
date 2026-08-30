@@ -1,13 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   deleteOperator,
   inviteOperator,
   listOperators,
+  listPendingOperatorInvites,
   updateOperator,
-  verifyOperatorInvite,
 } from "../api.js";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
-import OtpInput from "../components/OtpInput.jsx";
 import { EMAIL_ERROR, isValidEmail } from "../fieldRules.js";
 
 const emptyForm = { first_name: "", last_name: "", email: "" };
@@ -23,16 +22,15 @@ function formatLastLogin(value) {
 
 export default function Operators() {
   const [items, setItems] = useState([]);
+  const [pendingInvites, setPendingInvites] = useState([]);
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState(null);
-  const [step, setStep] = useState("form");
-  const [otp, setOtp] = useState("");
   const [error, setError] = useState("");
+  const [ok, setOk] = useState("");
   const [emailBlurred, setEmailBlurred] = useState(false);
   const [pending, setPending] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [pendingDelete, setPendingDelete] = useState(null);
-  const verifyingRef = useRef(false);
 
   const emailInvalid = Boolean(form.email) && !isValidEmail(form.email.trim());
   const formOk =
@@ -42,7 +40,12 @@ export default function Operators() {
     isValidEmail(form.email.trim());
 
   async function refresh() {
-    setItems(await listOperators());
+    const [operators, invites] = await Promise.all([
+      listOperators(),
+      listPendingOperatorInvites(),
+    ]);
+    setItems(operators);
+    setPendingInvites(invites);
   }
 
   useEffect(() => {
@@ -59,14 +62,6 @@ export default function Operators() {
     setForm(emptyForm);
     setEditingId(null);
     setEmailBlurred(false);
-    setStep("form");
-    setOtp("");
-  }
-
-  async function sendInvite(payload) {
-    await inviteOperator(payload);
-    setStep("otp");
-    setOtp("");
   }
 
   async function handleSubmit(event) {
@@ -80,13 +75,16 @@ export default function Operators() {
     }
     if (!first_name || !last_name || !email) {
       setError("Nombre, apellidos y correo son obligatorios.");
+      setOk("");
       return;
     }
     if (!isValidEmail(email)) {
       setError(EMAIL_ERROR);
+      setOk("");
       return;
     }
     setError("");
+    setOk("");
     setPending(true);
     const payload = { first_name, last_name, email };
     try {
@@ -95,49 +93,11 @@ export default function Operators() {
         resetForm();
         await refresh();
       } else {
-        await sendInvite(payload);
+        const result = await inviteOperator(payload);
+        resetForm();
+        setOk(result.detail || "Enviamos la invitación a ese correo.");
+        await refresh();
       }
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setPending(false);
-    }
-  }
-
-  async function verifyOtp(code) {
-    const next = String(code ?? otp).replace(/\D/g, "");
-    setOtp(next);
-    if (next.length !== 6) {
-      setError("Escribe el código de 6 dígitos que enviamos.");
-      return;
-    }
-    if (verifyingRef.current) {
-      return;
-    }
-    verifyingRef.current = true;
-    setError("");
-    setPending(true);
-    try {
-      await verifyOperatorInvite(form.email.trim(), next);
-      resetForm();
-      await refresh();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      verifyingRef.current = false;
-      setPending(false);
-    }
-  }
-
-  async function handleResend() {
-    setError("");
-    setPending(true);
-    try {
-      await sendInvite({
-        first_name: form.first_name.trim(),
-        last_name: form.last_name.trim(),
-        email: form.email.trim(),
-      });
     } catch (err) {
       setError(err.message);
     } finally {
@@ -153,13 +113,13 @@ export default function Operators() {
       email: item.email,
     });
     setEmailBlurred(false);
-    setStep("form");
-    setOtp("");
     setError("");
+    setOk("");
   }
 
   function requestDelete(item) {
     setError("");
+    setOk("");
     setPendingDelete(item);
   }
 
@@ -188,86 +148,16 @@ export default function Operators() {
       pendingDelete.email
     : "";
 
-  if (step === "otp") {
-    return (
-      <section>
-        <h2>Operators</h2>
-        <p className="hint">
-          Enviamos un código a <strong>{form.email}</strong> para confirmar el
-          alta. El Operator aún no existe hasta que el código sea correcto.
-        </p>
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            verifyOtp(otp);
-          }}
-        >
-          <OtpInput
-            id="operator-otp"
-            value={otp}
-            onChange={(next) => {
-              setOtp(next);
-              if (error) setError("");
-            }}
-            onComplete={verifyOtp}
-            disabled={pending}
-            invalid={Boolean(error)}
-          />
-          {error ? <p className="error">{error}</p> : null}
-          <div className="row">
-            <button type="submit" disabled={pending || otp.length !== 6}>
-              {pending ? "Verificando…" : "Confirmar alta"}
-            </button>
-            <button
-              type="button"
-              className="secondary"
-              disabled={pending}
-              onClick={handleResend}
-            >
-              Reenviar código
-            </button>
-            <button
-              type="button"
-              className="secondary"
-              disabled={pending}
-              onClick={() => {
-                setOtp("");
-                setError("");
-                setStep("form");
-              }}
-            >
-              Volver
-            </button>
-          </div>
-        </form>
-        <ul className="list">
-          {items.map((item) => (
-            <li key={item.id} className="list-item">
-              <div>
-                <strong>
-                  {item.first_name} {item.last_name}
-                </strong>
-                <span className="muted"> · {item.email}</span>
-              </div>
-            </li>
-          ))}
-        </ul>
-      </section>
-    );
-  }
-
   return (
     <section>
       <h2>Operators</h2>
       <p className="hint">
-        El alta se confirma con un código enviado al correo. Luego entran a
-        Monitor con ese correo y otro código. Un correo solo puede ser de un
-        Operator.
+        Envía una invitación con nombre, apellidos y correo. El Operator abre el
+        vínculo, escribe el código y elige su contraseña. Hasta entonces no
+        está activo en Monitor.
       </p>
       <form onSubmit={handleSubmit}>
-        {editingId ? (
-          <p className="muted">Editando operator.</p>
-        ) : null}
+        {editingId ? <p className="muted">Editando operator.</p> : null}
         <div className="row">
           <input
             placeholder="nombre"
@@ -297,10 +187,10 @@ export default function Operators() {
             {pending
               ? editingId
                 ? "Guardando…"
-                : "Enviando código…"
+                : "Enviando invitación…"
               : editingId
                 ? "Guardar"
-                : "Enviar código"}
+                : "Enviar invitación"}
           </button>
           {editingId ? (
             <button type="button" className="secondary" onClick={resetForm}>
@@ -310,6 +200,24 @@ export default function Operators() {
         </div>
       </form>
       {error ? <p className="error">{error}</p> : null}
+      {ok ? <p className="ok">{ok}</p> : null}
+      {pendingInvites.length ? (
+        <ul className="list">
+          {pendingInvites.map((item) => (
+            <li key={item.email} className="list-item">
+              <div>
+                <strong>
+                  {item.first_name} {item.last_name}
+                </strong>
+                <span className="muted"> · {item.email}</span>
+                <span className="muted beat-when">
+                  Invitación enviada · aún no activo en Monitor
+                </span>
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : null}
       <ul className="list">
         {items.map((item) => (
           <li key={item.id} className="list-item">
@@ -336,7 +244,9 @@ export default function Operators() {
             </div>
           </li>
         ))}
-        {!items.length ? <li className="muted">Aún no hay Operators.</li> : null}
+        {!items.length && !pendingInvites.length ? (
+          <li className="muted">Aún no hay Operators.</li>
+        ) : null}
       </ul>
       <ConfirmDialog
         open={Boolean(pendingDelete)}

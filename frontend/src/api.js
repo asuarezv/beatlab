@@ -126,10 +126,33 @@ export function inviteOperator(payload) {
   });
 }
 
-export function verifyOperatorInvite(email, otp) {
-  return request("/api/operators/verify/", {
+export function listPendingOperatorInvites() {
+  return request("/api/operators/pending/");
+}
+
+export function fetchOperatorInvite(token) {
+  const query = new URLSearchParams({ token }).toString();
+  return request(`/api/public/operator/invite/?${query}`);
+}
+
+export function verifyOperatorAccess(payload) {
+  return request("/api/public/operator/verify/", {
     method: "POST",
-    body: JSON.stringify({ email, otp }),
+    body: JSON.stringify(payload),
+  });
+}
+
+export function setOperatorAccessPassword(payload) {
+  return request("/api/public/operator/password/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function requestOperatorRecover(email) {
+  return request("/api/public/operator/recover/", {
+    method: "POST",
+    body: JSON.stringify({ email }),
   });
 }
 

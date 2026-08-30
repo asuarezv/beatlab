@@ -29,6 +29,11 @@ MONITOR_CREDENTIALS_ERROR = "Correo o contraseña no válidos."
 MONITOR_LOGIN_REQUIRED = "El correo y la contraseña son obligatorios."
 PASSWORD_CREATED = "Contraseña creada."
 PASSWORD_UPDATED = "Contraseña actualizada."
+OPERATOR_INVITE_SENT = "Enviamos la invitación a ese correo."
+OPERATOR_ACTIVATE_OK = "Ya puedes entrar a Monitor con tu correo y contraseña."
+OPERATOR_RECOVER_SENT = "Si el correo está dado de alta, te enviamos un código."
+OPERATOR_INVITE_INVALID = "Este vínculo no es válido."
+OPERATOR_GRANT_REQUIRED = "Confirma el código antes de elegir la contraseña."
 
 
 def is_valid_company_name(name: str) -> bool:
@@ -57,10 +62,12 @@ def validate_new_password(password, password2, user=None) -> str:
     return password
 
 
-def email_already_used(email: str, *, exclude_operator_id=None) -> bool:
+def email_already_used(
+    email: str, *, exclude_operator_id=None, include_invites=False
+) -> bool:
     from django.contrib.auth import get_user_model
 
-    from .models import Operator
+    from .models import Operator, OperatorInviteChallenge
 
     email = (email or "").strip().lower()
     if not email:
@@ -69,6 +76,10 @@ def email_already_used(email: str, *, exclude_operator_id=None) -> bool:
     if exclude_operator_id:
         operators = operators.exclude(pk=exclude_operator_id)
     if operators.exists():
+        return True
+    if include_invites and OperatorInviteChallenge.objects.filter(
+        email__iexact=email
+    ).exists():
         return True
     users = get_user_model().objects.filter(email__iexact=email)
     if exclude_operator_id:
@@ -81,7 +92,7 @@ def assert_email_available(
 ) -> None:
     from django.contrib.auth import get_user_model
 
-    from .models import Operator
+    from .models import Operator, OperatorInviteChallenge
 
     email = (email or "").strip().lower()
     if not email:
@@ -90,6 +101,8 @@ def assert_email_available(
     if exclude_operator_id:
         operators = operators.exclude(pk=exclude_operator_id)
     if operators.exists():
+        raise ValueError(OPERATOR_EMAIL_TAKEN)
+    if OperatorInviteChallenge.objects.filter(email__iexact=email).exists():
         raise ValueError(OPERATOR_EMAIL_TAKEN)
     users = get_user_model().objects.filter(email__iexact=email)
     if exclude_operator_id:

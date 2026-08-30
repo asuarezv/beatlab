@@ -1,0 +1,20 @@
+{% autoescape off %}Hola {{ name }},
+
+{{ inviter_name }} te invitó a Monitor de {{ company_name }}.
+
+Monitor es la app donde ves el pulso de los sistemas de tu empresa y recibes avisos.
+
+Tu código de 6 dígitos:
+
+  {{ otp }}
+
+Abre este vínculo, escribe el código y elige tu contraseña:
+
+  {{ invite_url }}
+
+Caduca en {{ minutes }} minutos. No lo compartas con nadie.
+Si no esperabas esta invitación, ignora este correo.
+
+BeatLab · NynuSoft
+{{ site_url }}
+{% endautoescape %}

@@ -39,16 +39,20 @@ from .models import (
 from .notify import beat_payload, notify_company_beat
 from .tokens import issue_operator_jwt, issue_system_jwt
 from .otp import (
+    activate_operator_password,
     consume_email_change_otp,
     consume_monitor_otp,
     consume_monitor_password,
-    consume_operator_invite_otp,
     consume_signup_otp,
+    invite_info_payload,
     issue_email_change_otp,
     issue_monitor_otp,
     issue_operator_invite_otp,
+    issue_operator_recover_otp,
     issue_signup_otp,
+    lookup_operator_invite,
     validate_signup_fields,
+    verify_operator_access_otp,
 )
 from .validation import (
     CURRENT_PASSWORD_ERROR,
@@ -442,55 +446,44 @@ class OperatorViewSet(TenantViewSet):
                 status=status.HTTP_404_NOT_FOUND,
             )
         assert_company_writable(self.company)
+        inviter = request.user
+        inviter_name = (
+            f"{inviter.first_name} {inviter.last_name}".strip() or inviter.username
+        )
         try:
             result = issue_operator_invite_otp(
                 company=self.company,
                 first_name=request.data.get("first_name"),
                 last_name=request.data.get("last_name"),
                 email=request.data.get("email"),
+                inviter_name=inviter_name,
             )
         except ValueError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(result)
 
-    @action(detail=False, methods=["post"], url_path="verify")
-    def verify(self, request):
+    @action(detail=False, methods=["get"], url_path="pending")
+    def pending(self, request):
         if not self.company:
             return Response(
                 {"detail": "No hay empresa activa."},
                 status=status.HTTP_404_NOT_FOUND,
             )
-        assert_company_writable(self.company)
-        try:
-            challenge = consume_operator_invite_otp(
-                email=request.data.get("email"),
-                otp=request.data.get("otp"),
-            )
-        except ValueError as exc:
-            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-        if challenge.company_id != self.company.id:
-            return Response(
-                {"detail": "Solicita un código nuevo."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        serializer = self.get_serializer(
-            data={
-                "first_name": challenge.first_name,
-                "last_name": challenge.last_name,
-                "email": challenge.email,
-            }
+        rows = OperatorInviteChallenge.objects.filter(
+            company=self.company
+        ).order_by("-created_at")
+        return Response(
+            [
+                {
+                    "email": item.email,
+                    "first_name": item.first_name,
+                    "last_name": item.last_name,
+                    "created_at": item.created_at,
+                    "expires_at": item.expires_at,
+                }
+                for item in rows
+            ]
         )
-        serializer.is_valid(raise_exception=True)
-        try:
-            with transaction.atomic():
-                serializer.save()
-                challenge.delete()
-        except IntegrityError:
-            return Response(
-                {"detail": OPERATOR_EMAIL_TAKEN},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
 class BeatTypeViewSet(TenantViewSet):
@@ -782,3 +775,59 @@ def monitor_beats(request):
         .select_related("system", "beat_type")[:100]
     )
     return Response([beat_payload(beat) for beat in beats])
+
+
+@api_view(["GET"])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def public_operator_invite_info(request):
+    try:
+        challenge = lookup_operator_invite(token=request.query_params.get("token"))
+    except ValueError as exc:
+        return Response({"detail": str(exc)}, status=status.HTTP_404_NOT_FOUND)
+    return Response(invite_info_payload(challenge))
+
+
+@api_view(["POST"])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def public_operator_verify(request):
+    try:
+        result = verify_operator_access_otp(
+            token=request.data.get("token"),
+            email=request.data.get("email"),
+            otp=request.data.get("otp"),
+        )
+    except ValueError as exc:
+        return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+    return Response(result)
+
+
+@api_view(["POST"])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def public_operator_password(request):
+    try:
+        result = activate_operator_password(
+            grant=request.data.get("grant"),
+            password=request.data.get("password"),
+            password2=request.data.get("password2"),
+        )
+    except ValueError as exc:
+        return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+    created = result.pop("created", False)
+    return Response(
+        result,
+        status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+    )
+
+
+@api_view(["POST"])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def public_operator_recover(request):
+    try:
+        result = issue_operator_recover_otp(email=request.data.get("email"))
+    except ValueError as exc:
+        return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+    return Response(result)

@@ -23,7 +23,10 @@ from .validation import (
     MONITOR_CREDENTIALS_ERROR,
     MONITOR_LOGIN_REQUIRED,
     OPERATOR_ACCOUNT_ON_HUB,
+    OPERATOR_ACTIVATE_OK,
     OPERATOR_EMAIL_TAKEN,
+    OPERATOR_INVITE_SENT,
+    OPERATOR_RECOVER_SENT,
     PASSWORD_CHANGE_REQUIRED,
     PASSWORD_CREATED,
     PASSWORD_MISMATCH_ERROR,
@@ -217,7 +220,9 @@ class IngestAndMonitorTests(APITestCase):
         self.assertEqual(denied.status_code, 400)
         self.assertEqual(denied.data["detail"], MONITOR_CREDENTIALS_ERROR)
 
-    def _invite_and_verify(self, first_name, last_name, email, digit="7"):
+    def _invite_and_activate(
+        self, first_name, last_name, email, digit="7", password="OperatorClave99"
+    ):
         with patch("hub.otp.secrets.choice", return_value=digit):
             invited = self.client.post(
                 "/api/operators/invite/",
@@ -230,13 +235,25 @@ class IngestAndMonitorTests(APITestCase):
             )
         self.assertEqual(invited.status_code, 200)
         self.assertFalse(Operator.objects.filter(email__iexact=email).exists())
+        challenge = OperatorInviteChallenge.objects.get(email=email.lower())
         verified = self.client.post(
-            "/api/operators/verify/",
-            {"email": email, "otp": digit * 6},
+            "/api/public/operator/verify/",
+            {"token": challenge.token, "otp": digit * 6},
             format="json",
         )
-        self.assertEqual(verified.status_code, 201)
-        return verified
+        self.assertEqual(verified.status_code, 200)
+        self.assertFalse(Operator.objects.filter(email__iexact=email).exists())
+        activated = self.client.post(
+            "/api/public/operator/password/",
+            {
+                "grant": verified.data["grant"],
+                "password": password,
+                "password2": password,
+            },
+            format="json",
+        )
+        self.assertEqual(activated.status_code, 201)
+        return Operator.objects.get(email=email.lower())
 
     def test_hub_operator_crud_is_tenant_scoped(self):
         other = Company.objects.create(name="Otra", slug="otra")
@@ -259,10 +276,13 @@ class IngestAndMonitorTests(APITestCase):
             format="json",
         )
         self.assertEqual(blocked.status_code, 405)
-        created = self._invite_and_verify("Luis", "García", "luis@labbe.test")
-        operator_id = created.data["id"]
-        self.assertEqual(created.data["email"], "luis@labbe.test")
-        self.assertIsNone(created.data["last_login_at"])
+        created = self._invite_and_activate("Luis", "García", "luis@labbe.test")
+        operator_id = created.id
+        self.assertEqual(created.email, "luis@labbe.test")
+        self.assertIsNone(created.last_login_at)
+        self.assertTrue(created.has_password())
+        self.assertTrue(created.check_password("OperatorClave99"))
+        self.assertNotEqual(created.password_hash, "OperatorClave99")
         listed = self.client.get("/api/operators/")
         self.assertEqual(listed.status_code, 200)
         emails = {item["email"] for item in listed.data}
@@ -313,9 +333,24 @@ class IngestAndMonitorTests(APITestCase):
                 format="json",
             )
         self.assertEqual(first.status_code, 200)
-        self.assertEqual(mail.outbox[0].subject, "Confirma tu alta como Operator")
+        self.assertEqual(first.data["detail"], OPERATOR_INVITE_SENT)
+        self.assertEqual(mail.outbox[0].subject, "Te invitaron a Monitor")
+        body = mail.outbox[0].body
+        self.assertIn("111111", body)
+        self.assertIn("/invitar?token=", body)
+        self.assertIn("Labbe 2", body)
+        self.assertIn("Monitor", body)
         self.assertEqual(OperatorInviteChallenge.objects.filter(email="luis@labbe.test").count(), 1)
         self.assertFalse(Operator.objects.filter(email="luis@labbe.test").exists())
+        pending = self.client.get("/api/operators/pending/")
+        self.assertEqual(pending.status_code, 200)
+        self.assertEqual(pending.data[0]["email"], "luis@labbe.test")
+        hub_verify = self.client.post(
+            "/api/operators/verify/",
+            {"email": "luis@labbe.test", "otp": "111111"},
+            format="json",
+        )
+        self.assertIn(hub_verify.status_code, {404, 405})
         with patch("hub.otp.secrets.choice", return_value="2"):
             second = self.client.post(
                 "/api/operators/invite/",
@@ -328,21 +363,182 @@ class IngestAndMonitorTests(APITestCase):
             )
         self.assertEqual(second.status_code, 200)
         self.assertEqual(OperatorInviteChallenge.objects.filter(email="luis@labbe.test").count(), 1)
+        challenge = OperatorInviteChallenge.objects.get(email="luis@labbe.test")
         stale = self.client.post(
-            "/api/operators/verify/",
-            {"email": "luis@labbe.test", "otp": "111111"},
+            "/api/public/operator/verify/",
+            {"token": challenge.token, "otp": "111111"},
             format="json",
         )
         self.assertEqual(stale.status_code, 400)
         self.assertFalse(Operator.objects.filter(email="luis@labbe.test").exists())
+        verified = self.client.post(
+            "/api/public/operator/verify/",
+            {"token": challenge.token, "otp": "222222"},
+            format="json",
+        )
+        self.assertEqual(verified.status_code, 200)
+        self.assertTrue(verified.data["grant"])
+        self.assertFalse(Operator.objects.filter(email="luis@labbe.test").exists())
+        self.assertEqual(OperatorInviteChallenge.objects.count(), 1)
         created = self.client.post(
-            "/api/operators/verify/",
-            {"email": "luis@labbe.test", "otp": "222222"},
+            "/api/public/operator/password/",
+            {
+                "grant": verified.data["grant"],
+                "password": "OperatorClave99",
+                "password2": "OperatorClave99",
+            },
             format="json",
         )
         self.assertEqual(created.status_code, 201)
-        self.assertEqual(created.data["email"], "luis@labbe.test")
+        self.assertEqual(created.data["detail"], OPERATOR_ACTIVATE_OK)
+        operator = Operator.objects.get(email="luis@labbe.test")
+        self.assertTrue(operator.check_password("OperatorClave99"))
+        self.assertNotEqual(operator.password_hash, "OperatorClave99")
         self.assertEqual(OperatorInviteChallenge.objects.count(), 0)
+        login = self.client.post(
+            "/api/monitor/auth/login/",
+            {"email": "luis@labbe.test", "password": "OperatorClave99"},
+            format="json",
+        )
+        self.assertEqual(login.status_code, 200)
+        self.assertTrue(login.data["token"])
+
+    def test_operator_invite_cancel_keeps_challenge_and_recover_sets_password(self):
+        self._hub_session()
+        with patch("hub.otp.secrets.choice", return_value="3"):
+            invited = self.client.post(
+                "/api/operators/invite/",
+                {
+                    "first_name": "Luis",
+                    "last_name": "García",
+                    "email": "luis@labbe.test",
+                },
+                format="json",
+            )
+        self.assertEqual(invited.status_code, 200)
+        challenge = OperatorInviteChallenge.objects.get(email="luis@labbe.test")
+        info = self.client.get(f"/api/public/operator/invite/?token={challenge.token}")
+        self.assertEqual(info.status_code, 200)
+        self.assertEqual(info.data["email"], "luis@labbe.test")
+        self.assertEqual(info.data["company_name"], "Labbe 2")
+        verified = self.client.post(
+            "/api/public/operator/verify/",
+            {"token": challenge.token, "otp": "333333"},
+            format="json",
+        )
+        self.assertEqual(verified.status_code, 200)
+        self.assertFalse(Operator.objects.filter(email="luis@labbe.test").exists())
+        self.assertEqual(OperatorInviteChallenge.objects.count(), 1)
+        reuse = self.client.post(
+            "/api/public/operator/verify/",
+            {"token": challenge.token, "otp": "333333"},
+            format="json",
+        )
+        self.assertEqual(reuse.status_code, 200)
+        denied = self.client.post(
+            "/api/monitor/auth/login/",
+            {"email": "luis@labbe.test", "password": "OperatorClave99"},
+            format="json",
+        )
+        self.assertEqual(denied.status_code, 400)
+        mail.outbox.clear()
+        with patch("hub.otp.secrets.choice", return_value="8"):
+            recovered = self.client.post(
+                "/api/public/operator/recover/",
+                {"email": "luis@labbe.test"},
+                format="json",
+            )
+        self.assertEqual(recovered.status_code, 200)
+        self.assertEqual(recovered.data["detail"], OPERATOR_RECOVER_SENT)
+        self.assertEqual(mail.outbox[0].subject, "Recupera tu cuenta Monitor")
+        self.assertIn("/invitar?token=", mail.outbox[0].body)
+        self.assertEqual(OperatorInviteChallenge.objects.count(), 1)
+        again = self.client.post(
+            "/api/public/operator/verify/",
+            {"token": challenge.token, "otp": "888888"},
+            format="json",
+        )
+        self.assertEqual(again.status_code, 200)
+        saved = self.client.post(
+            "/api/public/operator/password/",
+            {
+                "grant": again.data["grant"],
+                "password": "OperatorClave99",
+                "password2": "OperatorClave99",
+            },
+            format="json",
+        )
+        self.assertEqual(saved.status_code, 201)
+        operator = Operator.objects.get(email="luis@labbe.test")
+        self.assertTrue(operator.check_password("OperatorClave99"))
+        self.assertFalse(OperatorInviteChallenge.objects.filter(email="luis@labbe.test").exists())
+
+    def test_operator_recover_resets_existing_password_without_session(self):
+        self.operator.set_password("ViejaClave88")
+        self.operator.save(update_fields=["password_hash"])
+        with patch("hub.otp.secrets.choice", return_value="6"):
+            asked = self.client.post(
+                "/api/public/operator/recover/",
+                {"email": "op@labbe.test"},
+                format="json",
+            )
+        self.assertEqual(asked.status_code, 200)
+        self.assertEqual(asked.data["detail"], OPERATOR_RECOVER_SENT)
+        verified = self.client.post(
+            "/api/public/operator/verify/",
+            {"email": "op@labbe.test", "otp": "666666"},
+            format="json",
+        )
+        self.assertEqual(verified.status_code, 200)
+        self.assertNotIn("token", verified.data)
+        saved = self.client.post(
+            "/api/public/operator/password/",
+            {
+                "grant": verified.data["grant"],
+                "password": "NuevaClave77",
+                "password2": "NuevaClave77",
+            },
+            format="json",
+        )
+        self.assertEqual(saved.status_code, 200)
+        self.assertEqual(saved.data["detail"], OPERATOR_ACTIVATE_OK)
+        self.operator.refresh_from_db()
+        self.assertTrue(self.operator.check_password("NuevaClave77"))
+        self.assertFalse(self.operator.check_password("ViejaClave88"))
+        login = self.client.post(
+            "/api/monitor/auth/login/",
+            {"email": "op@labbe.test", "password": "NuevaClave77"},
+            format="json",
+        )
+        self.assertEqual(login.status_code, 200)
+
+    def test_pending_invite_cannot_use_monitor(self):
+        self._hub_session()
+        with patch("hub.otp.secrets.choice", return_value="5"):
+            invited = self.client.post(
+                "/api/operators/invite/",
+                {
+                    "first_name": "Luis",
+                    "last_name": "García",
+                    "email": "luis@labbe.test",
+                },
+                format="json",
+            )
+        self.assertEqual(invited.status_code, 200)
+        mail.outbox.clear()
+        asked = self.client.post(
+            "/api/monitor/auth/request-otp/",
+            {"email": "luis@labbe.test"},
+            format="json",
+        )
+        self.assertEqual(asked.status_code, 200)
+        self.assertEqual(len(mail.outbox), 0)
+        denied = self.client.post(
+            "/api/monitor/auth/login/",
+            {"email": "luis@labbe.test", "password": "OperatorClave99"},
+            format="json",
+        )
+        self.assertEqual(denied.status_code, 400)
 
     def test_operator_email_is_globally_unique(self):
         other = Company.objects.create(name="Otra", slug="otra")
