@@ -39,7 +39,7 @@ class CompanySerializer(serializers.ModelSerializer):
 
 
 class OperatorSerializer(serializers.ModelSerializer):
-    username = serializers.CharField(write_only=True)
+    username = serializers.CharField(write_only=True, trim_whitespace=False)
     password = serializers.CharField(write_only=True, min_length=8)
     display_name = serializers.CharField(source="user.username", read_only=True)
 

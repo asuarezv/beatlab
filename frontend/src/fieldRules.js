@@ -15,7 +15,7 @@ export function isValidCompanyName(name) {
 }
 
 export function sanitizeUsername(value) {
-  return String(value ?? "").replace(/\s/g, "");
+  return String(value ?? "").replace(/[^A-Za-z0-9]/g, "");
 }
 
 export function isValidUsername(username) {
