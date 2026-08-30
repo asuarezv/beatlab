@@ -90,10 +90,24 @@ export function listOperators() {
   return request("/api/operators/");
 }
 
-export function createOperator(username, password) {
+export function createOperator(payload) {
   return request("/api/operators/", {
     method: "POST",
-    body: JSON.stringify({ username, password }),
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateOperator(id, payload) {
+  return request(`/api/operators/${id}/`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deleteOperator(id) {
+  return request(`/api/operators/${id}/`, {
+    method: "DELETE",
+    body: "{}",
   });
 }
 

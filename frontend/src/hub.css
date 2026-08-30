@@ -402,6 +402,31 @@ button.secondary {
   border: 1px solid var(--line);
 }
 
+button.danger {
+  background: transparent;
+  color: var(--danger);
+  border: 1px solid var(--line);
+}
+
+.list-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.list-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  flex: 0 0 auto;
+}
+
+.list-actions button {
+  padding: 0.35rem 0.65rem;
+  font-size: 0.85rem;
+}
+
 .beat-when {
   display: block;
   margin-top: 0.2rem;
