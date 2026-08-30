@@ -5,7 +5,9 @@ export default function Landing() {
   return (
     <main className="landing">
       <p className="eyebrow">Plataforma</p>
-      <h1>BeatLab Hub</h1>
+      <h1>
+        BeatLab <GlossaryTerm termId="hub">Hub</GlossaryTerm>
+      </h1>
       <p className="muted landing-lead">
         Controla la salud de tus{" "}
         <GlossaryTerm termId="system">systems</GlossaryTerm>. Demo de 15 días
