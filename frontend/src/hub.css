@@ -170,6 +170,37 @@ nav button {
   font-size: 2rem;
 }
 
+.card-link {
+  display: block;
+  color: inherit;
+  transition: border-color 0.15s ease;
+}
+
+.card-link:hover {
+  border-color: var(--accent);
+}
+
+.card-link .muted {
+  display: block;
+  margin-top: 0.35rem;
+}
+
+.consumo-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.auth-switch {
+  margin: 1.1rem 0 0;
+  text-align: center;
+}
+
+.grid > .card,
+.grid > .card-link {
+  min-height: 8.5rem;
+}
+
 .row {
   display: flex;
   flex-wrap: wrap;

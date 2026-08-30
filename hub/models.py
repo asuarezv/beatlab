@@ -1,10 +1,13 @@
 from django.conf import settings
 from django.db import models
+from django.db.models import Sum
+from django.utils import timezone
 
 
 class Company(models.Model):
     name = models.CharField(max_length=160)
     slug = models.SlugField(unique=True)
+    trial_ends_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -12,6 +15,42 @@ class Company(models.Model):
 
     def __str__(self) -> str:
         return self.name
+
+    def beats_included(self) -> int:
+        return self.packages.aggregate(total=Sum("beats"))["total"] or 0
+
+    def beats_used(self) -> int:
+        return self.beats.count()
+
+    def beats_remaining(self) -> int:
+        return max(0, self.beats_included() - self.beats_used())
+
+    def trial_active(self) -> bool:
+        return bool(self.trial_ends_at and timezone.now() < self.trial_ends_at)
+
+    def has_paid_package(self) -> bool:
+        return self.packages.filter(kind=BeatPackage.Kind.PURCHASE).exists()
+
+    def is_writable(self) -> bool:
+        return self.trial_active() or self.has_paid_package()
+
+
+class BeatPackage(models.Model):
+    class Kind(models.TextChoices):
+        DEMO = "demo", "Demo"
+        PURCHASE = "purchase", "Compra"
+
+    company = models.ForeignKey(
+        Company,
+        on_delete=models.CASCADE,
+        related_name="packages",
+    )
+    beats = models.PositiveIntegerField()
+    kind = models.CharField(max_length=16, choices=Kind.choices)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
 
 
 class Membership(models.Model):

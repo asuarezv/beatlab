@@ -1,8 +1,12 @@
 import json
 
-from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth import authenticate, get_user_model, login, logout
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import transaction
 from django.http import JsonResponse
 from django.middleware.csrf import get_token
+from django.utils.text import slugify
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_POST
 from rest_framework import status, viewsets
@@ -10,7 +14,14 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from .models import Beat, BeatType, Operator, System
+from .models import Beat, BeatType, Company, Operator, System
+from .quota import (
+    assert_can_consume_beat,
+    assert_company_writable,
+    company_payload,
+    grant_demo,
+    usage_payload,
+)
 from .serializers import (
     BeatSerializer,
     BeatTypeSerializer,
@@ -19,6 +30,8 @@ from .serializers import (
     SystemSerializer,
 )
 from .tenant import companies_for, current_company, ensure_membership
+
+User = get_user_model()
 
 
 def _json_body(request):
@@ -44,6 +57,25 @@ def _staff_ok(user):
     return user.is_authenticated and (user.is_staff or user.is_superuser)
 
 
+def session_payload(request, user):
+    company = current_company(request)
+    return {
+        "user": user_payload(user),
+        "companies": list(companies_for(user).values("id", "name", "slug")),
+        "current_company": company_payload(company),
+    }
+
+
+def _unique_company_slug(name: str) -> str:
+    base = slugify(name) or "empresa"
+    slug = base
+    index = 2
+    while Company.objects.filter(slug=slug).exists():
+        slug = f"{base}-{index}"
+        index += 1
+    return slug
+
+
 @require_GET
 def health(_request):
     return JsonResponse({"ok": True, "service": "beatlab-hub"})
@@ -62,18 +94,7 @@ def me(request):
     get_token(request)
     if not _staff_ok(request.user):
         return JsonResponse({"user": None, "companies": [], "current_company": None})
-    company = current_company(request)
-    return JsonResponse(
-        {
-            "user": user_payload(request.user),
-            "companies": list(companies_for(request.user).values("id", "name", "slug")),
-            "current_company": (
-                {"id": company.id, "name": company.name, "slug": company.slug}
-                if company
-                else None
-            ),
-        }
-    )
+    return JsonResponse(session_payload(request, request.user))
 
 
 @require_POST
@@ -89,18 +110,44 @@ def login_view(request):
     if user is None or not user.is_active or not _staff_ok(user):
         return JsonResponse({"detail": "Usuario o contraseña no válidos"}, status=400)
     login(request, user)
-    company = current_company(request)
-    return JsonResponse(
-        {
-            "user": user_payload(user),
-            "companies": list(companies_for(user).values("id", "name", "slug")),
-            "current_company": (
-                {"id": company.id, "name": company.name, "slug": company.slug}
-                if company
-                else None
-            ),
-        }
-    )
+    return JsonResponse(session_payload(request, user))
+
+
+@require_POST
+def register_view(request):
+    data = _json_body(request)
+    if data is None:
+        return JsonResponse({"detail": "JSON inválido"}, status=400)
+    company_name = (data.get("company_name") or "").strip()
+    username = (data.get("username") or "").strip()
+    email = (data.get("email") or "").strip()
+    password = (data.get("password") or "").strip()
+    password2 = (data.get("password2") or "").strip()
+    if not company_name or not username or not password:
+        return JsonResponse({"detail": "Empresa, usuario y contraseña son obligatorios."}, status=400)
+    if password != password2:
+        return JsonResponse({"detail": "Las contraseñas no coinciden."}, status=400)
+    if User.objects.filter(username__iexact=username).exists():
+        return JsonResponse({"detail": "Ese usuario ya está en uso."}, status=400)
+    try:
+        validate_password(password)
+    except DjangoValidationError as exc:
+        return JsonResponse({"detail": " ".join(exc.messages)}, status=400)
+
+    with transaction.atomic():
+        company = Company.objects.create(name=company_name, slug=_unique_company_slug(company_name))
+        grant_demo(company)
+        user = User.objects.create_user(
+            username=username,
+            password=password,
+            email=email,
+            is_staff=True,
+        )
+        ensure_membership(user, company)
+
+    login(request, user, backend="django.contrib.auth.backends.ModelBackend")
+    request.session["company_id"] = company.id
+    return JsonResponse(session_payload(request, user), status=201)
 
 
 @require_POST
@@ -119,7 +166,18 @@ def select_company(request):
     if not company:
         return Response({"detail": "Empresa no encontrada"}, status=status.HTTP_404_NOT_FOUND)
     request.session["company_id"] = company.id
-    return Response({"id": company.id, "name": company.name, "slug": company.slug})
+    return Response(company_payload(company))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def salud(request):
+    if not _staff_ok(request.user):
+        return Response({"detail": "No autorizado"}, status=status.HTTP_401_UNAUTHORIZED)
+    company = current_company(request)
+    if not company:
+        return Response({"detail": "No hay empresa activa."}, status=status.HTTP_404_NOT_FOUND)
+    return Response(usage_payload(company))
 
 
 class TenantViewSet(viewsets.ModelViewSet):
@@ -136,6 +194,10 @@ class TenantViewSet(viewsets.ModelViewSet):
         context["company"] = getattr(self, "company", None)
         return context
 
+    def perform_create(self, serializer):
+        assert_company_writable(self.company)
+        serializer.save()
+
 
 class CompanyViewSet(viewsets.ModelViewSet):
     serializer_class = CompanySerializer
@@ -148,6 +210,7 @@ class CompanyViewSet(viewsets.ModelViewSet):
         if not self.request.user.is_superuser:
             self.permission_denied(self.request, message="Solo un superusuario crea empresas.")
         company = serializer.save()
+        grant_demo(company)
         ensure_membership(self.request.user, company)
         self.request.session["company_id"] = company.id
 
@@ -186,3 +249,7 @@ class BeatViewSet(TenantViewSet):
         if not self.company:
             return Beat.objects.none()
         return Beat.objects.filter(company=self.company).select_related("system", "beat_type")
+
+    def perform_create(self, serializer):
+        assert_can_consume_beat(self.company)
+        serializer.save()

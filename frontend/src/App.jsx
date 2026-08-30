@@ -5,8 +5,10 @@ import Shell from "./components/Shell.jsx";
 import Beats from "./pages/Beats.jsx";
 import BeatTypes from "./pages/BeatTypes.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
+import Consumo from "./pages/Consumo.jsx";
 import Login from "./pages/Login.jsx";
 import Operators from "./pages/Operators.jsx";
+import Register from "./pages/Register.jsx";
 import Systems from "./pages/Systems.jsx";
 
 export default function App() {
@@ -39,6 +41,7 @@ export default function App() {
   if (!session) {
     return (
       <Routes>
+        <Route path="registro" element={<Register onLogin={setSession} />} />
         <Route path="*" element={<Login onLogin={setSession} />} />
       </Routes>
     );
@@ -48,6 +51,7 @@ export default function App() {
     <Shell session={session} onSession={setSession}>
       <Routes>
         <Route index element={<Dashboard />} />
+        <Route path="consumo" element={<Consumo />} />
         <Route path="operators" element={<Operators />} />
         <Route path="systems" element={<Systems />} />
         <Route path="tipos" element={<BeatTypes />} />

@@ -15,7 +15,9 @@ urlpatterns = [
     path("auth/csrf/", views.csrf, name="auth-csrf"),
     path("auth/me/", views.me, name="auth-me"),
     path("auth/login/", views.login_view, name="auth-login"),
+    path("auth/register/", views.register_view, name="auth-register"),
     path("auth/logout/", views.logout_view, name="auth-logout"),
     path("auth/company/", views.select_company, name="auth-company"),
+    path("salud/", views.salud, name="salud"),
     path("", include(router.urls)),
 ]

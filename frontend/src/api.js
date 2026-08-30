@@ -39,6 +39,17 @@ export function login(username, password) {
   });
 }
 
+export function register(payload) {
+  return request("/api/auth/register/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function fetchSalud() {
+  return request("/api/salud/");
+}
+
 export function logout() {
   return request("/api/auth/logout/", { method: "POST", body: "{}" });
 }

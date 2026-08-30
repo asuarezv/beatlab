@@ -6,6 +6,7 @@ from django.core.management.base import BaseCommand
 from django.utils.crypto import get_random_string
 
 from hub.models import Company
+from hub.quota import grant_demo
 from hub.tenant import ensure_membership
 
 User = get_user_model()
@@ -31,6 +32,7 @@ class Command(BaseCommand):
             user.is_superuser = True
             user.save()
         ensure_membership(user, company)
+        grant_demo(company)
         if password:
             dest = Path(settings.BASE_DIR) / ".bootstrap-admin"
             dest.write_text(

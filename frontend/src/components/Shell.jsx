@@ -18,6 +18,14 @@ export default function Shell({ session, onSession, children }) {
         <div>
           <p className="eyebrow">BeatLab</p>
           <h1>Hub{company ? ` · ${company.name}` : ""}</h1>
+          {company?.trial_active ? (
+            <p className="muted">
+              Demo · {company.trial_days_left} día
+              {company.trial_days_left === 1 ? "" : "s"} ·{" "}
+              {Number(company.beats_remaining || 0).toLocaleString("es-MX")} Beats
+              restantes
+            </p>
+          ) : null}
         </div>
         <nav>
           <NavLink to="/" end>

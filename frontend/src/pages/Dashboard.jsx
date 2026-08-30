@@ -1,5 +1,10 @@
 import { useEffect, useState } from "react";
-import { listBeats, listBeatTypes, listOperators, listSystems } from "../api.js";
+import { Link } from "react-router-dom";
+import { fetchSalud } from "../api.js";
+
+function formatNumber(value) {
+  return Number(value || 0).toLocaleString("es-MX");
+}
 
 export default function Dashboard() {
   const [stats, setStats] = useState(null);
@@ -9,20 +14,8 @@ export default function Dashboard() {
     let cancelled = false;
     (async () => {
       try {
-        const [systems, operators, types, beats] = await Promise.all([
-          listSystems(),
-          listOperators(),
-          listBeatTypes(),
-          listBeats(),
-        ]);
-        if (!cancelled) {
-          setStats({
-            systems: systems.length,
-            operators: operators.length,
-            types: types.length,
-            beats: beats.length,
-          });
-        }
+        const data = await fetchSalud();
+        if (!cancelled) setStats(data);
       } catch (err) {
         if (!cancelled) setError(err.message);
       }
@@ -35,24 +28,34 @@ export default function Dashboard() {
   if (error) return <p className="error">{error}</p>;
   if (!stats) return <p className="muted">Cargando salud…</p>;
 
+  const trialNote = stats.trial_active
+    ? `Demo · ${stats.trial_days_left} día${stats.trial_days_left === 1 ? "" : "s"}`
+    : "Demo terminado";
+
   return (
-    <section className="grid">
-      <article className="card">
-        <p className="eyebrow">Systems</p>
-        <strong>{stats.systems}</strong>
-      </article>
-      <article className="card">
-        <p className="eyebrow">Operators</p>
-        <strong>{stats.operators}</strong>
-      </article>
-      <article className="card">
-        <p className="eyebrow">Tipos de Beat</p>
-        <strong>{stats.types}</strong>
-      </article>
-      <article className="card">
-        <p className="eyebrow">Beats</p>
-        <strong>{stats.beats}</strong>
-      </article>
+    <section>
+      <p className="muted">{trialNote}</p>
+      <div className="grid">
+        <article className="card">
+          <p className="eyebrow">Systems</p>
+          <strong>{stats.systems}</strong>
+        </article>
+        <article className="card">
+          <p className="eyebrow">Operators</p>
+          <strong>{stats.operators}</strong>
+        </article>
+        <article className="card">
+          <p className="eyebrow">Tipos de Beat</p>
+          <strong>{stats.types}</strong>
+        </article>
+        <Link className="card card-link" to="/consumo">
+          <p className="eyebrow">Beats</p>
+          <strong>{formatNumber(stats.beats_remaining)}</strong>
+          <span className="muted">
+            restantes de {formatNumber(stats.beats_included)}
+          </span>
+        </Link>
+      </div>
     </section>
   );
 }

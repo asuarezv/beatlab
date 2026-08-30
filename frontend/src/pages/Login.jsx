@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { login } from "../api.js";
 
 export default function Login({ onLogin }) {
@@ -59,6 +60,9 @@ export default function Login({ onLogin }) {
         <button type="submit" disabled={pending}>
           {pending ? "Entrando…" : "Entrar"}
         </button>
+        <p className="auth-switch">
+          ¿Primera vez? <Link to="/registro">Crear mi Hub (demo 15 días)</Link>
+        </p>
       </form>
     </div>
   );
