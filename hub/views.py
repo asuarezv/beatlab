@@ -82,7 +82,9 @@ def login_view(request):
     if data is None:
         return JsonResponse({"detail": "JSON inválido"}, status=400)
     username = (data.get("username") or "").strip()
-    password = data.get("password") or ""
+    password = (data.get("password") or "").strip()
+    if not username or not password:
+        return JsonResponse({"detail": "Usuario y contraseña son obligatorios."}, status=400)
     user = authenticate(request, username=username, password=password)
     if user is None or not user.is_active or not _staff_ok(user):
         return JsonResponse({"detail": "Usuario o contraseña no válidos"}, status=400)

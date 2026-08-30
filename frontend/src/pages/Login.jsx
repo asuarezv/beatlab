@@ -9,10 +9,18 @@ export default function Login({ onLogin }) {
 
   async function handleSubmit(event) {
     event.preventDefault();
+    const user = username.trim();
+    const pass = password.trim();
+    setUsername(user);
+    setPassword(pass);
+    if (!user || !pass) {
+      setError("Usuario y contraseña son obligatorios.");
+      return;
+    }
     setError("");
     setPending(true);
     try {
-      const data = await login(username, password);
+      const data = await login(user, pass);
       onLogin(data);
     } catch (err) {
       setError(err.message);

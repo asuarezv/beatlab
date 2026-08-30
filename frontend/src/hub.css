@@ -74,6 +74,23 @@ select {
   place-items: center;
 }
 
+.center .card {
+  width: min(100%, 460px);
+  padding: 2.25rem 2.5rem 2.4rem;
+}
+
+.center .card h1 {
+  font-size: 1.85rem;
+}
+
+.center .card input {
+  padding: 0.75rem 0.85rem;
+}
+
+.center .card button {
+  padding: 0.75rem 1rem;
+}
+
 .eyebrow {
   margin: 0 0 0.35rem;
   color: var(--accent);
