@@ -262,6 +262,10 @@ nav button {
   color: var(--danger);
 }
 
+span.req {
+  color: var(--danger);
+}
+
 input.invalid {
   border-color: var(--danger);
 }

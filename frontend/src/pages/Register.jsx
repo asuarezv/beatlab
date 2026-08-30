@@ -27,6 +27,20 @@ export default function Register({ onLogin }) {
   const [emailBlurred, setEmailBlurred] = useState(false);
 
   const emailInvalid = Boolean(email) && !isValidEmail(email.trim());
+  const pass = password.trim();
+  const pass2 = password2.trim();
+  const passwordsMismatch = Boolean(pass) && Boolean(pass2) && pass !== pass2;
+  const formOk =
+    Boolean(companyName.trim()) &&
+    isValidCompanyName(companyName.trim()) &&
+    Boolean(username) &&
+    isValidUsername(username) &&
+    Boolean(email.trim()) &&
+    isValidEmail(email.trim()) &&
+    Boolean(pass) &&
+    pass.length >= 8 &&
+    Boolean(pass2) &&
+    pass === pass2;
 
   async function handleStart(event) {
     event.preventDefault();
@@ -111,7 +125,7 @@ export default function Register({ onLogin }) {
             Enviamos un código a <strong>{email}</strong> desde info@nynusoft.com.
           </p>
           <label>
-            Código
+            Código <span className="req">*</span>
             <input
               name="otp"
               inputMode="numeric"
@@ -150,7 +164,7 @@ export default function Register({ onLogin }) {
           para confirmar el alta.
         </p>
         <label>
-          Empresa
+          Empresa <span className="req">*</span>
           <input
             name="company"
             autoComplete="organization"
@@ -160,7 +174,7 @@ export default function Register({ onLogin }) {
           />
         </label>
         <label>
-          Usuario
+          Usuario <span className="req">*</span>
           <input
             name="username"
             autoComplete="username"
@@ -170,7 +184,7 @@ export default function Register({ onLogin }) {
           />
         </label>
         <label>
-          Correo
+          Correo <span className="req">*</span>
           <input
             name="email"
             type="email"
@@ -190,6 +204,7 @@ export default function Register({ onLogin }) {
           autoComplete="new-password"
           visible={showPassword}
           onToggle={() => setShowPassword((value) => !value)}
+          invalid={passwordsMismatch}
         />
         <PasswordField
           label="Confirmar contraseña"
@@ -199,9 +214,10 @@ export default function Register({ onLogin }) {
           autoComplete="new-password"
           visible={showPassword2}
           onToggle={() => setShowPassword2((value) => !value)}
+          invalid={passwordsMismatch}
         />
         {error ? <p className="error">{error}</p> : null}
-        <button type="submit" disabled={pending}>
+        <button type="submit" disabled={!formOk || pending}>
           {pending ? "Enviando código…" : "Enviar código"}
         </button>
         <p className="auth-switch">

@@ -6,10 +6,16 @@ export default function PasswordField({
   autoComplete,
   visible,
   onToggle,
+  className,
+  invalid,
 }) {
+  const inputClass = [className, invalid ? "invalid" : null]
+    .filter(Boolean)
+    .join(" ") || undefined;
+
   return (
     <label>
-      {label}
+      {label} <span className="req">*</span>
       <span className="password-field">
         <input
           name={name}
@@ -17,6 +23,7 @@ export default function PasswordField({
           autoComplete={autoComplete}
           value={value}
           onChange={onChange}
+          className={inputClass}
           minLength={8}
           required
         />
