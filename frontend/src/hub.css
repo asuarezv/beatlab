@@ -149,6 +149,11 @@ select {
   color: var(--text);
 }
 
+.public-nav a:hover,
+.public-nav a:focus-visible {
+  color: var(--accent);
+}
+
 .public-shell-body {
   flex: 1;
   display: flex;
