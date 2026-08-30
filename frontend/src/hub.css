@@ -14,6 +14,10 @@
   box-sizing: border-box;
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
 html,
 body,
 #root {
@@ -162,6 +166,12 @@ select {
   width: min(100% - 2rem, 960px);
   margin: 0 auto;
   padding: 2rem 0;
+}
+
+.public-shell-body:has(.landing) {
+  align-items: flex-start;
+  padding-top: 2.5rem;
+  padding-bottom: 3.5rem;
 }
 
 .public-footer {
@@ -394,7 +404,12 @@ input.invalid {
 
 .landing {
   text-align: center;
+  width: 100%;
+}
+
+.landing-hero {
   width: min(100%, 34rem);
+  margin: 0 auto;
 }
 
 .heartbeat {
@@ -424,6 +439,10 @@ input.invalid {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
   .heartbeat {
     animation: none;
   }
@@ -466,6 +485,111 @@ input.invalid {
 
 .landing-ghost:hover {
   border-color: var(--accent);
+}
+
+.landing-how {
+  margin-top: 3.5rem;
+  padding-top: 2.4rem;
+  border-top: 1px solid var(--line);
+  scroll-margin-top: 1.25rem;
+}
+
+.landing-how:focus {
+  outline: none;
+}
+
+.landing-how:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 6px;
+  border-radius: 8px;
+}
+
+.landing-how h2 {
+  font-size: 1.85rem;
+}
+
+.landing-how-lead {
+  max-width: 36rem;
+  margin: -0.25rem auto 1.5rem;
+  font-size: 1.05rem;
+  line-height: 1.55;
+}
+
+.how-channels {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.65rem;
+  margin: 0 0 1.5rem;
+}
+
+.how-channel {
+  margin: 0;
+  padding: 0.7rem 0.45rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--accent);
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.how-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.85rem;
+  text-align: left;
+}
+
+.how-step {
+  margin: 0;
+  padding: 1.15rem 1.05rem 1.2rem;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+
+.how-step-num {
+  display: inline-grid;
+  place-items: center;
+  width: 1.65rem;
+  height: 1.65rem;
+  margin-bottom: 0.7rem;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #042028;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.how-step h3 {
+  margin: 0 0 0.4rem;
+  font-size: 1rem;
+  letter-spacing: -0.02em;
+}
+
+.how-step p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+@media (max-width: 800px) {
+  .how-steps,
+  .how-channels {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .how-steps,
+  .how-channels {
+    grid-template-columns: 1fr;
+  }
 }
 
 button.glossary-term {
