@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.contrib.auth.hashers import check_password, make_password
 from django.db import models
 from django.db.models import Sum
 from django.utils import timezone
@@ -98,6 +99,7 @@ class Operator(models.Model):
     first_name = models.CharField(max_length=80)
     last_name = models.CharField(max_length=80)
     email = models.EmailField(unique=True)
+    password_hash = models.CharField(max_length=256, blank=True, null=True)
     last_login_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -109,8 +111,37 @@ class Operator(models.Model):
         full = f"{self.first_name} {self.last_name}".strip()
         return full or self.email
 
+    def has_password(self) -> bool:
+        return bool(self.password_hash)
+
+    def set_password(self, raw: str) -> None:
+        self.password_hash = make_password(raw)
+
+    def check_password(self, raw: str) -> bool:
+        if not self.password_hash:
+            return False
+        return check_password(raw, self.password_hash)
+
 
 class OperatorOtpChallenge(models.Model):
+    email = models.EmailField(unique=True)
+    code_hash = models.CharField(max_length=64)
+    expires_at = models.DateTimeField()
+    attempts = models.PositiveSmallIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+
+class OperatorInviteChallenge(models.Model):
+    company = models.ForeignKey(
+        Company,
+        on_delete=models.CASCADE,
+        related_name="operator_invite_challenges",
+    )
+    first_name = models.CharField(max_length=80)
+    last_name = models.CharField(max_length=80)
     email = models.EmailField(unique=True)
     code_hash = models.CharField(max_length=64)
     expires_at = models.DateTimeField()

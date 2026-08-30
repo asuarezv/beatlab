@@ -7,7 +7,7 @@ from django.contrib.auth import (
     logout,
     update_session_auth_hash,
 )
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.http import JsonResponse
 from django.middleware.csrf import get_token
 from django.utils import timezone
@@ -16,7 +16,7 @@ from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_POST
 from rest_framework import status, viewsets
 from rest_framework.decorators import action, api_view, authentication_classes, permission_classes
-from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.exceptions import MethodNotAllowed, PermissionDenied, ValidationError
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
@@ -26,19 +26,34 @@ from .authentication import (
     OperatorTokenAuthentication,
     SystemJWTAuthentication,
 )
-from .models import Beat, BeatType, Company, Operator, OperatorOtpChallenge, System
+from .models import (
+    Beat,
+    BeatType,
+    Company,
+    Operator,
+    OperatorInviteChallenge,
+    OperatorOtpChallenge,
+    System,
+)
 from .notify import beat_payload, notify_company_beat
 from .tokens import issue_operator_jwt, issue_system_jwt
 from .otp import (
     consume_monitor_otp,
+    consume_monitor_password,
+    consume_operator_invite_otp,
     consume_signup_otp,
     issue_monitor_otp,
+    issue_operator_invite_otp,
     issue_signup_otp,
     validate_signup_fields,
 )
 from .validation import (
     CURRENT_PASSWORD_ERROR,
+    OPERATOR_ACCOUNT_ON_HUB,
+    OPERATOR_EMAIL_TAKEN,
     PASSWORD_CHANGE_REQUIRED,
+    PASSWORD_CREATED,
+    PASSWORD_UPDATED,
     USERNAME_ERROR,
     is_valid_username,
     validate_new_password,
@@ -132,13 +147,28 @@ def login_view(request):
     data = _json_body(request)
     if data is None:
         return JsonResponse({"detail": "JSON inválido"}, status=400)
-    username = data.get("username") or ""
+    username = (data.get("username") or "").strip()
     password = (data.get("password") or "").strip()
     if not username or not password:
         return JsonResponse({"detail": "Usuario y contraseña son obligatorios."}, status=400)
+    if "@" in username:
+        operator = (
+            Operator.objects.filter(email__iexact=username)
+            .select_related("user")
+            .first()
+        )
+        if operator and not _staff_ok(operator.user):
+            return JsonResponse({"detail": OPERATOR_ACCOUNT_ON_HUB}, status=400)
+        return JsonResponse({"detail": "Usuario o contraseña no válidos"}, status=400)
     if not is_valid_username(username):
         return JsonResponse({"detail": USERNAME_ERROR}, status=400)
     stored = User.objects.filter(username__iexact=username).first()
+    if (
+        stored
+        and not _staff_ok(stored)
+        and stored.operator_profiles.exists()
+    ):
+        return JsonResponse({"detail": OPERATOR_ACCOUNT_ON_HUB}, status=400)
     user = authenticate(
         request,
         username=stored.username if stored else username,
@@ -314,13 +344,75 @@ class OperatorViewSet(TenantViewSet):
             return Operator.objects.none()
         return Operator.objects.filter(company=self.company).select_related("user")
 
+    def create(self, request, *args, **kwargs):
+        raise MethodNotAllowed("POST")
+
     def perform_destroy(self, instance):
         email = instance.email
         user = instance.user
         instance.delete()
         OperatorOtpChallenge.objects.filter(email__iexact=email).delete()
+        OperatorInviteChallenge.objects.filter(email__iexact=email).delete()
         if user and not user.is_staff and not user.is_superuser:
             user.delete()
+
+    @action(detail=False, methods=["post"], url_path="invite")
+    def invite(self, request):
+        if not self.company:
+            return Response(
+                {"detail": "No hay empresa activa."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        assert_company_writable(self.company)
+        try:
+            result = issue_operator_invite_otp(
+                company=self.company,
+                first_name=request.data.get("first_name"),
+                last_name=request.data.get("last_name"),
+                email=request.data.get("email"),
+            )
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(result)
+
+    @action(detail=False, methods=["post"], url_path="verify")
+    def verify(self, request):
+        if not self.company:
+            return Response(
+                {"detail": "No hay empresa activa."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        assert_company_writable(self.company)
+        try:
+            challenge = consume_operator_invite_otp(
+                email=request.data.get("email"),
+                otp=request.data.get("otp"),
+            )
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        if challenge.company_id != self.company.id:
+            return Response(
+                {"detail": "Solicita un código nuevo."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        serializer = self.get_serializer(
+            data={
+                "first_name": challenge.first_name,
+                "last_name": challenge.last_name,
+                "email": challenge.email,
+            }
+        )
+        serializer.is_valid(raise_exception=True)
+        try:
+            with transaction.atomic():
+                serializer.save()
+                challenge.delete()
+        except IntegrityError:
+            return Response(
+                {"detail": OPERATOR_EMAIL_TAKEN},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
 class BeatTypeViewSet(TenantViewSet):
@@ -428,6 +520,31 @@ def monitor_request_otp(request):
     return Response(result)
 
 
+def monitor_session_payload(operator, *, with_token=True):
+    data = {
+        "operator": {
+            "id": operator.id,
+            "display_name": operator.display_name(),
+            "first_name": operator.first_name,
+            "last_name": operator.last_name,
+            "email": operator.email,
+            "has_password": operator.has_password(),
+        },
+        "company": {
+            "id": operator.company_id,
+            "name": operator.company.name,
+        },
+    }
+    if with_token:
+        data["token"] = issue_operator_jwt(operator)
+    return data
+
+
+def _mark_operator_login(operator):
+    operator.last_login_at = timezone.now()
+    operator.save(update_fields=["last_login_at"])
+
+
 @api_view(["POST"])
 @authentication_classes([])
 @permission_classes([AllowAny])
@@ -439,22 +556,65 @@ def monitor_verify_otp(request):
         )
     except ValueError as exc:
         return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-    operator.last_login_at = timezone.now()
-    operator.save(update_fields=["last_login_at"])
+    _mark_operator_login(operator)
+    return Response(monitor_session_payload(operator))
+
+
+@api_view(["POST"])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def monitor_login(request):
+    try:
+        operator = consume_monitor_password(
+            email=request.data.get("email"),
+            password=request.data.get("password"),
+        )
+    except ValueError as exc:
+        return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+    _mark_operator_login(operator)
+    return Response(monitor_session_payload(operator))
+
+
+@api_view(["GET"])
+@authentication_classes([OperatorTokenAuthentication])
+@permission_classes([IsOperatorToken])
+def monitor_me(request):
+    return Response(monitor_session_payload(request.auth, with_token=False))
+
+
+@api_view(["POST"])
+@authentication_classes([OperatorTokenAuthentication])
+@permission_classes([IsOperatorToken])
+def monitor_password(request):
+    operator = request.auth
+    had_password = operator.has_password()
+    if had_password:
+        current = (request.data.get("current_password") or "").strip()
+        if not current:
+            return Response(
+                {"detail": PASSWORD_CHANGE_REQUIRED},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not operator.check_password(current):
+            return Response(
+                {"detail": CURRENT_PASSWORD_ERROR},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+    try:
+        new_password = validate_new_password(
+            request.data.get("password"),
+            request.data.get("password2"),
+            user=operator.user,
+        )
+    except ValueError as exc:
+        return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+    operator.set_password(new_password)
+    operator.save(update_fields=["password_hash"])
     return Response(
         {
-            "token": issue_operator_jwt(operator),
-            "operator": {
-                "id": operator.id,
-                "display_name": operator.display_name(),
-                "first_name": operator.first_name,
-                "last_name": operator.last_name,
-                "email": operator.email,
-            },
-            "company": {
-                "id": operator.company_id,
-                "name": operator.company.name,
-            },
+            "ok": True,
+            "has_password": True,
+            "detail": PASSWORD_UPDATED if had_password else PASSWORD_CREATED,
         }
     )
 

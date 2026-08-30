@@ -13,9 +13,16 @@ USERNAME_ERROR = (
 
 USERNAME_RE = re.compile(r"^[A-Za-z0-9]+$")
 PERSON_NAME_ERROR = "El nombre y los apellidos son obligatorios."
+OPERATOR_EMAIL_TAKEN = "Ese correo ya está dado de alta."
 PASSWORD_MISMATCH_ERROR = "Las contraseñas no coinciden."
 CURRENT_PASSWORD_ERROR = "La contraseña actual no es correcta."
 PASSWORD_CHANGE_REQUIRED = "La contraseña actual y la nueva son obligatorias."
+HUB_ACCOUNT_ON_MONITOR = "Esta cuenta es del Hub. Entra en hub.nynusoft.com."
+OPERATOR_ACCOUNT_ON_HUB = "Esta cuenta es de Operator. Entra en Monitor."
+MONITOR_CREDENTIALS_ERROR = "Correo o contraseña no válidos."
+MONITOR_LOGIN_REQUIRED = "El correo y la contraseña son obligatorios."
+PASSWORD_CREATED = "Contraseña creada."
+PASSWORD_UPDATED = "Contraseña actualizada."
 
 
 def is_valid_company_name(name: str) -> bool:

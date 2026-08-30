@@ -9,6 +9,7 @@ from rest_framework import serializers
 from .models import Beat, BeatType, Company, Operator, System
 from .validation import (
     COMPANY_NAME_ERROR,
+    OPERATOR_EMAIL_TAKEN,
     PERSON_NAME_ERROR,
     email_already_used,
     is_valid_company_name,
@@ -83,6 +84,11 @@ class OperatorSerializer(serializers.ModelSerializer):
         except DjangoValidationError:
             raise serializers.ValidationError("El correo no es válido.") from None
         exclude_id = self.instance.pk if self.instance else None
+        operators = Operator.objects.filter(email__iexact=email)
+        if exclude_id:
+            operators = operators.exclude(pk=exclude_id)
+        if operators.exists():
+            raise serializers.ValidationError(OPERATOR_EMAIL_TAKEN)
         if email_already_used(email, exclude_operator_id=exclude_id):
             raise serializers.ValidationError("Ese correo ya está en uso.")
         return email

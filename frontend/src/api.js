@@ -101,10 +101,17 @@ export function listOperators() {
   return request("/api/operators/");
 }
 
-export function createOperator(payload) {
-  return request("/api/operators/", {
+export function inviteOperator(payload) {
+  return request("/api/operators/invite/", {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+}
+
+export function verifyOperatorInvite(email, otp) {
+  return request("/api/operators/verify/", {
+    method: "POST",
+    body: JSON.stringify({ email, otp }),
   });
 }
 

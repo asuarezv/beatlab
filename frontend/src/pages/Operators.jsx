@@ -1,10 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
-  createOperator,
   deleteOperator,
+  inviteOperator,
   listOperators,
   updateOperator,
+  verifyOperatorInvite,
 } from "../api.js";
+import OtpInput from "../components/OtpInput.jsx";
 import { EMAIL_ERROR, isValidEmail } from "../fieldRules.js";
 
 const emptyForm = { first_name: "", last_name: "", email: "" };
@@ -22,9 +24,12 @@ export default function Operators() {
   const [items, setItems] = useState([]);
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState(null);
+  const [step, setStep] = useState("form");
+  const [otp, setOtp] = useState("");
   const [error, setError] = useState("");
   const [emailBlurred, setEmailBlurred] = useState(false);
   const [pending, setPending] = useState(false);
+  const verifyingRef = useRef(false);
 
   const emailInvalid = Boolean(form.email) && !isValidEmail(form.email.trim());
   const formOk =
@@ -51,6 +56,14 @@ export default function Operators() {
     setForm(emptyForm);
     setEditingId(null);
     setEmailBlurred(false);
+    setStep("form");
+    setOtp("");
+  }
+
+  async function sendInvite(payload) {
+    await inviteOperator(payload);
+    setStep("otp");
+    setOtp("");
   }
 
   async function handleSubmit(event) {
@@ -76,11 +89,52 @@ export default function Operators() {
     try {
       if (editingId) {
         await updateOperator(editingId, payload);
+        resetForm();
+        await refresh();
       } else {
-        await createOperator(payload);
+        await sendInvite(payload);
       }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function verifyOtp(code) {
+    const next = String(code ?? otp).replace(/\D/g, "");
+    setOtp(next);
+    if (next.length !== 6) {
+      setError("Escribe el código de 6 dígitos que enviamos.");
+      return;
+    }
+    if (verifyingRef.current) {
+      return;
+    }
+    verifyingRef.current = true;
+    setError("");
+    setPending(true);
+    try {
+      await verifyOperatorInvite(form.email.trim(), next);
       resetForm();
       await refresh();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      verifyingRef.current = false;
+      setPending(false);
+    }
+  }
+
+  async function handleResend() {
+    setError("");
+    setPending(true);
+    try {
+      await sendInvite({
+        first_name: form.first_name.trim(),
+        last_name: form.last_name.trim(),
+        email: form.email.trim(),
+      });
     } catch (err) {
       setError(err.message);
     } finally {
@@ -96,6 +150,8 @@ export default function Operators() {
       email: item.email,
     });
     setEmailBlurred(false);
+    setStep("form");
+    setOtp("");
     setError("");
   }
 
@@ -117,12 +173,81 @@ export default function Operators() {
     }
   }
 
+  if (step === "otp") {
+    return (
+      <section>
+        <h2>Operators</h2>
+        <p className="hint">
+          Enviamos un código a <strong>{form.email}</strong> para confirmar el
+          alta. El Operator aún no existe hasta que el código sea correcto.
+        </p>
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            verifyOtp(otp);
+          }}
+        >
+          <OtpInput
+            id="operator-otp"
+            value={otp}
+            onChange={(next) => {
+              setOtp(next);
+              if (error) setError("");
+            }}
+            onComplete={verifyOtp}
+            disabled={pending}
+            invalid={Boolean(error)}
+          />
+          {error ? <p className="error">{error}</p> : null}
+          <div className="row">
+            <button type="submit" disabled={pending || otp.length !== 6}>
+              {pending ? "Verificando…" : "Confirmar alta"}
+            </button>
+            <button
+              type="button"
+              className="secondary"
+              disabled={pending}
+              onClick={handleResend}
+            >
+              Reenviar código
+            </button>
+            <button
+              type="button"
+              className="secondary"
+              disabled={pending}
+              onClick={() => {
+                setOtp("");
+                setError("");
+                setStep("form");
+              }}
+            >
+              Volver
+            </button>
+          </div>
+        </form>
+        <ul className="list">
+          {items.map((item) => (
+            <li key={item.id} className="list-item">
+              <div>
+                <strong>
+                  {item.first_name} {item.last_name}
+                </strong>
+                <span className="muted"> · {item.email}</span>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </section>
+    );
+  }
+
   return (
     <section>
       <h2>Operators</h2>
       <p className="hint">
-        Entran a Monitor con su correo y un código de 6 dígitos. No usan
-        contraseña.
+        El alta se confirma con un código enviado al correo. Luego entran a
+        Monitor con ese correo y otro código. Un correo solo puede ser de un
+        Operator.
       </p>
       <form onSubmit={handleSubmit}>
         {editingId ? (
@@ -154,7 +279,13 @@ export default function Operators() {
             required
           />
           <button type="submit" disabled={!formOk || pending}>
-            {pending ? "Guardando…" : editingId ? "Guardar" : "Dar de alta"}
+            {pending
+              ? editingId
+                ? "Guardando…"
+                : "Enviando código…"
+              : editingId
+                ? "Guardar"
+                : "Enviar código"}
           </button>
           {editingId ? (
             <button type="button" className="secondary" onClick={resetForm}>

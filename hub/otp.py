@@ -10,14 +10,20 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import validate_email
 from django.utils import timezone
 
-from .emails import send_monitor_otp, send_register_otp
-from .models import Operator, OperatorOtpChallenge, SignupChallenge
+from .emails import send_monitor_otp, send_operator_invite_otp, send_register_otp
+from .models import Operator, OperatorInviteChallenge, OperatorOtpChallenge, SignupChallenge
 from .validation import (
     COMPANY_NAME_ERROR,
+    HUB_ACCOUNT_ON_MONITOR,
+    MONITOR_CREDENTIALS_ERROR,
+    MONITOR_LOGIN_REQUIRED,
+    OPERATOR_EMAIL_TAKEN,
+    PERSON_NAME_ERROR,
     USERNAME_ERROR,
     email_already_used,
     is_valid_company_name,
     is_valid_username,
+    normalize_person_name,
 )
 
 logger = logging.getLogger(__name__)
@@ -127,6 +133,18 @@ def _monitor_generic(email: str, ttl: int) -> dict:
     }
 
 
+def _hub_admin_for_email(email: str):
+    from django.contrib.auth import get_user_model
+    from django.db.models import Q
+
+    return (
+        get_user_model()
+        .objects.filter(email__iexact=email, is_active=True)
+        .filter(Q(is_staff=True) | Q(is_superuser=True))
+        .first()
+    )
+
+
 def issue_monitor_otp(*, email) -> dict:
     email = (email or "").strip().lower()
     ttl = _ttl()
@@ -143,6 +161,8 @@ def issue_monitor_otp(*, email) -> dict:
         .first()
     )
     if not operator or not operator.user.is_active:
+        if _hub_admin_for_email(email):
+            raise ValueError(HUB_ACCOUNT_ON_MONITOR)
         return _monitor_generic(email, ttl)
 
     otp = _new_otp()
@@ -161,9 +181,76 @@ def issue_monitor_otp(*, email) -> dict:
     return _monitor_generic(email, ttl)
 
 
+def issue_operator_invite_otp(*, company, first_name, last_name, email) -> dict:
+    first_name = normalize_person_name(first_name)
+    last_name = normalize_person_name(last_name)
+    email = (email or "").strip().lower()
+    if not first_name or not last_name:
+        raise ValueError(PERSON_NAME_ERROR)
+    if not email:
+        raise ValueError("El correo es obligatorio.")
+    try:
+        validate_email(email)
+    except DjangoValidationError:
+        raise ValueError("El correo no es válido.") from None
+    if Operator.objects.filter(email__iexact=email).exists():
+        raise ValueError(OPERATOR_EMAIL_TAKEN)
+    if email_already_used(email):
+        raise ValueError("Ese correo ya está en uso.")
+
+    otp = _new_otp()
+    ttl = _ttl()
+    OperatorInviteChallenge.objects.filter(email=email).delete()
+    OperatorInviteChallenge.objects.create(
+        company=company,
+        first_name=first_name,
+        last_name=last_name,
+        email=email,
+        code_hash=hash_otp(otp, "operator-invite-otp"),
+        expires_at=timezone.now() + timedelta(seconds=ttl),
+    )
+    try:
+        send_operator_invite_otp(email, first_name, otp, ttl)
+    except Exception:
+        OperatorInviteChallenge.objects.filter(email=email).delete()
+        logger.exception("No se pudo enviar el OTP de alta de Operator a %s", email)
+        raise ValueError("No se pudo enviar el código. Inténtalo de nuevo.") from None
+    return {
+        "email": email,
+        "expires_in": ttl,
+        "detail": "Enviamos un código de verificación a ese correo.",
+    }
+
+
+def consume_operator_invite_otp(*, email, otp) -> OperatorInviteChallenge:
+    email = (email or "").strip().lower()
+    otp = (otp or "").strip()
+    challenge = OperatorInviteChallenge.objects.filter(email=email).first()
+    if not challenge:
+        raise ValueError("Solicita un código nuevo.")
+    if timezone.now() >= challenge.expires_at:
+        challenge.delete()
+        raise ValueError("El código caducó. Solicita uno nuevo.")
+    if challenge.attempts >= _max_attempts():
+        challenge.delete()
+        raise ValueError("Demasiados intentos. Solicita un código nuevo.")
+    if not secrets.compare_digest(
+        challenge.code_hash,
+        hash_otp(otp, "operator-invite-otp"),
+    ):
+        challenge.attempts += 1
+        challenge.save(update_fields=["attempts"])
+        raise ValueError("El código no es válido.")
+    return challenge
+
+
 def consume_monitor_otp(*, email, otp) -> Operator:
     email = (email or "").strip().lower()
     otp = (otp or "").strip()
+    if _hub_admin_for_email(email) and not Operator.objects.filter(
+        email__iexact=email
+    ).exists():
+        raise ValueError(HUB_ACCOUNT_ON_MONITOR)
     challenge = OperatorOtpChallenge.objects.filter(email=email).first()
     if not challenge:
         raise ValueError("Solicita un código nuevo.")
@@ -185,4 +272,27 @@ def consume_monitor_otp(*, email, otp) -> Operator:
     challenge.delete()
     if not operator or not operator.user.is_active:
         raise ValueError("Solicita un código nuevo.")
+    return operator
+
+
+def consume_monitor_password(*, email, password) -> Operator:
+    email = (email or "").strip().lower()
+    password = (password or "").strip()
+    if not email or not password:
+        raise ValueError(MONITOR_LOGIN_REQUIRED)
+    try:
+        validate_email(email)
+    except DjangoValidationError:
+        raise ValueError("El correo no es válido.") from None
+    operator = (
+        Operator.objects.filter(email__iexact=email)
+        .select_related("user", "company")
+        .first()
+    )
+    if not operator or not operator.user.is_active:
+        if _hub_admin_for_email(email):
+            raise ValueError(HUB_ACCOUNT_ON_MONITOR)
+        raise ValueError(MONITOR_CREDENTIALS_ERROR)
+    if not operator.check_password(password):
+        raise ValueError(MONITOR_CREDENTIALS_ERROR)
     return operator

@@ -496,6 +496,12 @@ input.invalid {
   margin: 0.15rem 0 0;
 }
 
+section .otp-field {
+  max-width: 22rem;
+  margin: 0.35rem 0 1rem;
+}
+
+.otp-field input,
 .card .otp-field input,
 .center .card .otp-field input,
 .public-shell-body .card .otp-field input {
@@ -511,6 +517,7 @@ input.invalid {
   letter-spacing: 0;
 }
 
+.otp-field input:focus,
 .card .otp-field input:focus {
   outline: 2px solid var(--accent);
   outline-offset: 1px;

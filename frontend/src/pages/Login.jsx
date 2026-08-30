@@ -1,7 +1,13 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { login } from "../api.js";
-import { USERNAME_ERROR, isValidUsername, sanitizeUsername } from "../fieldRules.js";
+import {
+  EMAIL_ERROR,
+  USERNAME_ERROR,
+  isValidEmail,
+  isValidUsername,
+  sanitizeUsername,
+} from "../fieldRules.js";
 
 export default function Login({ onLogin }) {
   const [username, setUsername] = useState("");
@@ -19,7 +25,12 @@ export default function Login({ onLogin }) {
       setError("Usuario y contraseña son obligatorios.");
       return;
     }
-    if (!isValidUsername(user)) {
+    if (user.includes("@")) {
+      if (!isValidEmail(user)) {
+        setError(EMAIL_ERROR);
+        return;
+      }
+    } else if (!isValidUsername(user)) {
       setError(USERNAME_ERROR);
       return;
     }
@@ -42,12 +53,15 @@ export default function Login({ onLogin }) {
       </p>
       <h1>Entrar al Hub</h1>
       <label>
-        Usuario
+        Usuario o correo
         <input
           name="username"
           autoComplete="username"
           value={username}
-          onChange={(e) => setUsername(sanitizeUsername(e.target.value))}
+          onChange={(e) => {
+            const value = e.target.value;
+            setUsername(value.includes("@") ? value : sanitizeUsername(value));
+          }}
           required
         />
       </label>
