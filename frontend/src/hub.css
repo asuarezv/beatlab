@@ -942,6 +942,16 @@ button.glossary-entry strong {
   color: var(--muted);
 }
 
-.confirm-dialog button {
+.confirm-dialog > button {
   width: 100%;
+}
+
+.confirm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.confirm-actions button {
+  flex: 1 1 7rem;
 }

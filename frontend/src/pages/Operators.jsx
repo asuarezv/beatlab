@@ -6,6 +6,7 @@ import {
   updateOperator,
   verifyOperatorInvite,
 } from "../api.js";
+import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import OtpInput from "../components/OtpInput.jsx";
 import { EMAIL_ERROR, isValidEmail } from "../fieldRules.js";
 
@@ -29,6 +30,8 @@ export default function Operators() {
   const [error, setError] = useState("");
   const [emailBlurred, setEmailBlurred] = useState(false);
   const [pending, setPending] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState(null);
   const verifyingRef = useRef(false);
 
   const emailInvalid = Boolean(form.email) && !isValidEmail(form.email.trim());
@@ -155,23 +158,35 @@ export default function Operators() {
     setError("");
   }
 
-  async function handleDelete(item) {
-    const label = `${item.first_name} ${item.last_name}`.trim() || item.email;
-    const ok = window.confirm(
-      `¿Dar de baja a ${label}? Ya no podrá entrar a Monitor.`,
-    );
-    if (!ok) return;
+  function requestDelete(item) {
     setError("");
+    setPendingDelete(item);
+  }
+
+  async function confirmDelete() {
+    const item = pendingDelete;
+    if (!item || deleting) return;
+    setError("");
+    setDeleting(true);
     try {
       await deleteOperator(item.id);
+      setPendingDelete(null);
       if (editingId === item.id) {
         resetForm();
       }
       await refresh();
     } catch (err) {
       setError(err.message);
+      setPendingDelete(null);
+    } finally {
+      setDeleting(false);
     }
   }
+
+  const deleteLabel = pendingDelete
+    ? `${pendingDelete.first_name} ${pendingDelete.last_name}`.trim() ||
+      pendingDelete.email
+    : "";
 
   if (step === "otp") {
     return (
@@ -314,7 +329,7 @@ export default function Operators() {
               <button
                 type="button"
                 className="danger"
-                onClick={() => handleDelete(item)}
+                onClick={() => requestDelete(item)}
               >
                 Baja
               </button>
@@ -323,6 +338,18 @@ export default function Operators() {
         ))}
         {!items.length ? <li className="muted">Aún no hay Operators.</li> : null}
       </ul>
+      <ConfirmDialog
+        open={Boolean(pendingDelete)}
+        eyebrow="Operators"
+        title={deleteLabel ? `¿Dar de baja a ${deleteLabel}?` : "¿Dar de baja?"}
+        description="Ya no podrá entrar a Monitor."
+        acceptLabel={deleting ? "Dando de baja…" : "Aceptar"}
+        pending={deleting}
+        onAccept={confirmDelete}
+        onCancel={() => {
+          if (!deleting) setPendingDelete(null);
+        }}
+      />
     </section>
   );
 }

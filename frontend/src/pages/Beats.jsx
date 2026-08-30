@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { issueSystemJwt, listBeats, listBeatTypes, listSystems } from "../api.js";
+import ConfirmDialog from "../components/ConfirmDialog.jsx";
 
 const PUBLIC_INGEST = "https://hub.nynusoft.com/api/ingest/beats/";
 const POLL_MS = 4000;
@@ -23,6 +24,7 @@ export default function Beats() {
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [confirmRotate, setConfirmRotate] = useState(false);
 
   const selected = systems.find((item) => String(item.id) === String(systemId));
   const exampleType = types[0]?.slug || "alerta";
@@ -83,26 +85,31 @@ export default function Beats() {
     };
   }, []);
 
-  async function handleIssue() {
+  async function issueJwt() {
     if (!systemId) return;
-    if (selected?.has_jwt) {
-      const ok = window.confirm(
-        "Al rotar, el JWT anterior deja de funcionar. ¿Continuar?",
-      );
-      if (!ok) return;
-    }
     setError("");
     setCopied(false);
     setBusy(true);
     try {
       const data = await issueSystemJwt(Number(systemId));
       setToken(data.token);
+      setConfirmRotate(false);
       await refreshMeta();
     } catch (err) {
       setError(err.message);
+      setConfirmRotate(false);
     } finally {
       setBusy(false);
     }
+  }
+
+  function handleIssue() {
+    if (!systemId) return;
+    if (selected?.has_jwt) {
+      setConfirmRotate(true);
+      return;
+    }
+    issueJwt();
   }
 
   async function handleCopy() {
@@ -214,6 +221,18 @@ export default function Beats() {
           {!items.length ? <li className="muted">Aún no hay Beats.</li> : null}
         </ul>
       </div>
+      <ConfirmDialog
+        open={confirmRotate}
+        eyebrow="Beats"
+        title="¿Rotar el JWT?"
+        description="Al rotar, el JWT anterior deja de funcionar."
+        acceptLabel={busy ? "Rotando…" : "Aceptar"}
+        pending={busy}
+        onAccept={issueJwt}
+        onCancel={() => {
+          if (!busy) setConfirmRotate(false);
+        }}
+      />
     </section>
   );
 }
