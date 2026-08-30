@@ -1,6 +1,12 @@
 import json
 
-from django.contrib.auth import authenticate, get_user_model, login, logout
+from django.contrib.auth import (
+    authenticate,
+    get_user_model,
+    login,
+    logout,
+    update_session_auth_hash,
+)
 from django.db import transaction
 from django.http import JsonResponse
 from django.middleware.csrf import get_token
@@ -30,7 +36,13 @@ from .otp import (
     issue_signup_otp,
     validate_signup_fields,
 )
-from .validation import USERNAME_ERROR, is_valid_username
+from .validation import (
+    CURRENT_PASSWORD_ERROR,
+    PASSWORD_CHANGE_REQUIRED,
+    USERNAME_ERROR,
+    is_valid_username,
+    validate_new_password,
+)
 from .quota import (
     assert_can_consume_beat,
     assert_company_writable,
@@ -64,6 +76,7 @@ def _json_body(request):
 def user_payload(user):
     return {
         "username": user.username,
+        "email": user.email or "",
         "display_name": user.get_full_name().strip() or user.username,
         "is_staff": user.is_staff,
         "is_superuser": user.is_superuser,
@@ -205,6 +218,32 @@ def register_verify(request):
 def logout_view(request):
     logout(request)
     return JsonResponse({"ok": True})
+
+
+@require_POST
+def change_password(request):
+    if not _staff_ok(request.user):
+        return JsonResponse({"detail": "No autorizado"}, status=401)
+    data = _json_body(request)
+    if data is None:
+        return JsonResponse({"detail": "JSON inválido"}, status=400)
+    current = (data.get("current_password") or "").strip()
+    if not current:
+        return JsonResponse({"detail": PASSWORD_CHANGE_REQUIRED}, status=400)
+    if not request.user.check_password(current):
+        return JsonResponse({"detail": CURRENT_PASSWORD_ERROR}, status=400)
+    try:
+        new_password = validate_new_password(
+            data.get("password"),
+            data.get("password2"),
+            user=request.user,
+        )
+    except ValueError as exc:
+        return JsonResponse({"detail": str(exc)}, status=400)
+    request.user.set_password(new_password)
+    request.user.save(update_fields=["password"])
+    update_session_auth_hash(request, request.user)
+    return JsonResponse({"ok": True, "detail": "Contraseña actualizada."})
 
 
 @api_view(["POST"])

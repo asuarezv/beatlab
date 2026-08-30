@@ -11,6 +11,7 @@ import Glossary from "./pages/Glossary.jsx";
 import Landing from "./pages/Landing.jsx";
 import Login from "./pages/Login.jsx";
 import Operators from "./pages/Operators.jsx";
+import Profile from "./pages/Profile.jsx";
 import Register from "./pages/Register.jsx";
 import Systems from "./pages/Systems.jsx";
 
@@ -81,6 +82,7 @@ export default function App() {
         <Route path="tipos" element={<BeatTypes />} />
         <Route path="beats" element={<Beats />} />
         <Route path="glosario" element={<Glossary />} />
+        <Route path="perfil" element={<Profile session={session} />} />
         <Route path="login" element={<Navigate to="/" replace />} />
         <Route path="entrar" element={<Navigate to="/" replace />} />
         <Route path="registro" element={<Navigate to="/" replace />} />

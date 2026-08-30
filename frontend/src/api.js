@@ -68,6 +68,17 @@ export function logout() {
   return request("/api/auth/logout/", { method: "POST", body: "{}" });
 }
 
+export function changePassword(currentPassword, password, password2) {
+  return request("/api/auth/password/", {
+    method: "POST",
+    body: JSON.stringify({
+      current_password: currentPassword,
+      password,
+      password2,
+    }),
+  });
+}
+
 export function selectCompany(companyId) {
   return request("/api/auth/company/", {
     method: "POST",

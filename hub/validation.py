@@ -1,5 +1,8 @@
 import re
 
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
+
 COMPANY_NAME_ERROR = (
     "El nombre de la empresa solo puede incluir letras, números, espacios "
     "y los símbolos & y -."
@@ -10,6 +13,9 @@ USERNAME_ERROR = (
 
 USERNAME_RE = re.compile(r"^[A-Za-z0-9]+$")
 PERSON_NAME_ERROR = "El nombre y los apellidos son obligatorios."
+PASSWORD_MISMATCH_ERROR = "Las contraseñas no coinciden."
+CURRENT_PASSWORD_ERROR = "La contraseña actual no es correcta."
+PASSWORD_CHANGE_REQUIRED = "La contraseña actual y la nueva son obligatorias."
 
 
 def is_valid_company_name(name: str) -> bool:
@@ -22,6 +28,20 @@ def is_valid_username(username: str) -> bool:
 
 def normalize_person_name(value: str) -> str:
     return (value or "").strip()
+
+
+def validate_new_password(password, password2, user=None) -> str:
+    password = (password or "").strip()
+    password2 = (password2 or "").strip()
+    if not password:
+        raise ValueError(PASSWORD_CHANGE_REQUIRED)
+    if password != password2:
+        raise ValueError(PASSWORD_MISMATCH_ERROR)
+    try:
+        validate_password(password, user=user)
+    except DjangoValidationError as exc:
+        raise ValueError(" ".join(exc.messages)) from exc
+    return password
 
 
 def email_already_used(email: str, *, exclude_operator_id=None) -> bool:
