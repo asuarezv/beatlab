@@ -36,41 +36,39 @@ export default function Login({ onLogin }) {
   }
 
   return (
-    <div className="wrap center">
-      <form className="card" onSubmit={handleSubmit}>
-        <p className="eyebrow">
-          <Link to="/">BeatLab</Link>
-        </p>
-        <h1>Entrar al Hub</h1>
-        <label>
-          Usuario
-          <input
-            name="username"
-            autoComplete="username"
-            value={username}
-            onChange={(e) => setUsername(sanitizeUsername(e.target.value))}
-            required
-          />
-        </label>
-        <label>
-          Contraseña
-          <input
-            name="password"
-            type="password"
-            autoComplete="current-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
-        </label>
-        {error ? <p className="error">{error}</p> : null}
-        <button type="submit" disabled={pending}>
-          {pending ? "Entrando…" : "Entrar"}
-        </button>
-        <p className="auth-switch">
-          ¿Primera vez? <Link to="/registro">Crear mi Hub (demo 15 días)</Link>
-        </p>
-      </form>
-    </div>
+    <form className="card" onSubmit={handleSubmit}>
+      <p className="eyebrow">
+        <Link to="/">BeatLab</Link>
+      </p>
+      <h1>Entrar al Hub</h1>
+      <label>
+        Usuario
+        <input
+          name="username"
+          autoComplete="username"
+          value={username}
+          onChange={(e) => setUsername(sanitizeUsername(e.target.value))}
+          required
+        />
+      </label>
+      <label>
+        Contraseña
+        <input
+          name="password"
+          type="password"
+          autoComplete="current-password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+        />
+      </label>
+      {error ? <p className="error">{error}</p> : null}
+      <button type="submit" disabled={pending}>
+        {pending ? "Entrando…" : "Entrar"}
+      </button>
+      <p className="auth-switch">
+        ¿Primera vez? <Link to="/registro">Crear mi Hub (demo 15 días)</Link>
+      </p>
+    </form>
   );
 }

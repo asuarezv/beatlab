@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { fetchCsrf, fetchMe } from "./api.js";
+import PublicShell from "./components/PublicShell.jsx";
 import Shell from "./components/Shell.jsx";
 import Beats from "./pages/Beats.jsx";
 import BeatTypes from "./pages/BeatTypes.jsx";
@@ -35,15 +36,10 @@ export default function App() {
   if (session === undefined) {
     return (
       <Routes>
-        <Route index element={<Landing />} />
-        <Route
-          path="*"
-          element={
-            <div className="wrap">
-              <p className="muted">Cargando…</p>
-            </div>
-          }
-        />
+        <Route element={<PublicShell />}>
+          <Route index element={<Landing />} />
+          <Route path="*" element={<p className="muted">Cargando…</p>} />
+        </Route>
       </Routes>
     );
   }
@@ -51,12 +47,14 @@ export default function App() {
   if (!session) {
     return (
       <Routes>
-        <Route index element={<Landing />} />
-        <Route path="registro" element={<Register onLogin={setSession} />} />
-        <Route path="entrar" element={<Login onLogin={setSession} />} />
-        <Route path="login" element={<Navigate to="/entrar" replace />} />
-        <Route path="glosario" element={<Navigate to="/entrar" replace />} />
-        <Route path="*" element={<Login onLogin={setSession} />} />
+        <Route element={<PublicShell />}>
+          <Route index element={<Landing />} />
+          <Route path="registro" element={<Register onLogin={setSession} />} />
+          <Route path="entrar" element={<Login onLogin={setSession} />} />
+          <Route path="login" element={<Navigate to="/entrar" replace />} />
+          <Route path="glosario" element={<Navigate to="/entrar" replace />} />
+          <Route path="*" element={<Login onLogin={setSession} />} />
+        </Route>
       </Routes>
     );
   }

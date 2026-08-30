@@ -74,21 +74,102 @@ select {
   place-items: center;
 }
 
-.center .card {
+.center .card,
+.public-shell-body .card {
   width: min(100%, 460px);
   padding: 2.25rem 2.5rem 2.4rem;
 }
 
-.center .card h1 {
+.center .card h1,
+.public-shell-body .card h1 {
   font-size: 1.85rem;
 }
 
-.center .card input {
+.center .card input,
+.public-shell-body .card input {
   padding: 0.75rem 0.85rem;
 }
 
-.center .card button {
+.center .card > button,
+.public-shell-body .card > button {
   padding: 0.75rem 1rem;
+}
+
+.public-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+.public-header {
+  border-bottom: 1px solid var(--line);
+}
+
+.public-header-inner,
+.public-footer-inner {
+  width: min(100% - 2rem, 960px);
+  margin: 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1.25rem;
+}
+
+.public-header-inner {
+  padding: 0.85rem 0;
+}
+
+.public-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: var(--accent);
+}
+
+.public-brand img {
+  display: block;
+  height: 22px;
+  width: auto;
+}
+
+.public-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+  align-items: center;
+}
+
+.public-nav a {
+  color: var(--muted);
+}
+
+.public-nav a.active {
+  color: var(--text);
+}
+
+.public-shell-body {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: min(100% - 2rem, 960px);
+  margin: 0 auto;
+  padding: 2rem 0;
+}
+
+.public-footer {
+  border-top: 1px solid var(--line);
+}
+
+.public-footer-inner {
+  padding: 0.9rem 0 1.1rem;
+}
+
+.public-footer p {
+  margin: 0;
+  font-size: 0.85rem;
 }
 
 .eyebrow {
@@ -273,20 +354,6 @@ input.invalid {
 .landing {
   text-align: center;
   width: min(100%, 34rem);
-}
-
-.landing-brand {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.7rem;
-  margin-bottom: 2.4rem;
-}
-
-.landing-brand img {
-  display: block;
-  height: 28px;
-  width: auto;
 }
 
 .heartbeat {

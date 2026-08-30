@@ -117,113 +117,113 @@ export default function Register({ onLogin }) {
 
   if (step === "otp") {
     return (
-      <div className="wrap center">
-        <form className="card" onSubmit={handleVerify}>
-          <p className="eyebrow">BeatLab</p>
-          <h1>Código de verificación</h1>
-          <p className="muted">
-            Enviamos un código a <strong>{email}</strong> desde info@nynusoft.com.
-          </p>
-          <label>
-            Código <span className="req">*</span>
-            <input
-              name="otp"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              value={otp}
-              onChange={(e) => setOtp(e.target.value)}
-              required
-            />
-          </label>
-          {error ? <p className="error">{error}</p> : null}
-          <button type="submit" disabled={pending}>
-            {pending ? "Verificando…" : "Crear Hub"}
+      <form className="card" onSubmit={handleVerify}>
+        <p className="eyebrow">
+          <Link to="/">BeatLab</Link>
+        </p>
+        <h1>Código de verificación</h1>
+        <p className="muted">
+          Enviamos un código a <strong>{email}</strong> desde info@nynusoft.com.
+        </p>
+        <label>
+          Código <span className="req">*</span>
+          <input
+            name="otp"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            value={otp}
+            onChange={(e) => setOtp(e.target.value)}
+            required
+          />
+        </label>
+        {error ? <p className="error">{error}</p> : null}
+        <button type="submit" disabled={pending}>
+          {pending ? "Verificando…" : "Crear Hub"}
+        </button>
+        <p className="auth-switch">
+          <button
+            type="button"
+            className="linkish"
+            disabled={pending}
+            onClick={() => setStep("form")}
+          >
+            Volver
           </button>
-          <p className="auth-switch">
-            <button
-              type="button"
-              className="linkish"
-              disabled={pending}
-              onClick={() => setStep("form")}
-            >
-              Volver
-            </button>
-          </p>
-        </form>
-      </div>
+        </p>
+      </form>
     );
   }
 
   return (
-    <div className="wrap center">
-      <form className="card" onSubmit={handleStart}>
-        <p className="eyebrow">BeatLab</p>
-        <h1>Crear mi Hub</h1>
-        <p className="muted">
-          Demo de 15 días con 10,000 Beats. Te mandamos un código a tu correo
-          para confirmar el alta.
-        </p>
-        <label>
-          Empresa <span className="req">*</span>
-          <input
-            name="company"
-            autoComplete="organization"
-            value={companyName}
-            onChange={(e) => setCompanyName(e.target.value)}
-            required
-          />
-        </label>
-        <label>
-          Usuario <span className="req">*</span>
-          <input
-            name="username"
-            autoComplete="username"
-            value={username}
-            onChange={(e) => setUsername(sanitizeUsername(e.target.value))}
-            required
-          />
-        </label>
-        <label>
-          Correo <span className="req">*</span>
-          <input
-            name="email"
-            type="email"
-            autoComplete="email"
-            value={email}
-            className={emailBlurred && emailInvalid ? "invalid" : undefined}
-            onChange={(e) => setEmail(e.target.value)}
-            onBlur={() => setEmailBlurred(true)}
-            required
-          />
-        </label>
-        <PasswordField
-          label="Contraseña"
-          name="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          autoComplete="new-password"
-          visible={showPassword}
-          onToggle={() => setShowPassword((value) => !value)}
-          invalid={passwordsMismatch}
+    <form className="card" onSubmit={handleStart}>
+      <p className="eyebrow">
+        <Link to="/">BeatLab</Link>
+      </p>
+      <h1>Crear mi Hub</h1>
+      <p className="muted">
+        Demo de 15 días con 10,000 Beats. Te mandamos un código a tu correo
+        para confirmar el alta.
+      </p>
+      <label>
+        Empresa <span className="req">*</span>
+        <input
+          name="company"
+          autoComplete="organization"
+          value={companyName}
+          onChange={(e) => setCompanyName(e.target.value)}
+          required
         />
-        <PasswordField
-          label="Confirmar contraseña"
-          name="password2"
-          value={password2}
-          onChange={(e) => setPassword2(e.target.value)}
-          autoComplete="new-password"
-          visible={showPassword2}
-          onToggle={() => setShowPassword2((value) => !value)}
-          invalid={passwordsMismatch}
+      </label>
+      <label>
+        Usuario <span className="req">*</span>
+        <input
+          name="username"
+          autoComplete="username"
+          value={username}
+          onChange={(e) => setUsername(sanitizeUsername(e.target.value))}
+          required
         />
-        {error ? <p className="error">{error}</p> : null}
-        <button type="submit" disabled={!formOk || pending}>
-          {pending ? "Enviando código…" : "Enviar código"}
-        </button>
-        <p className="auth-switch">
-          ¿Ya tienes Hub? <Link to="/entrar">Entrar</Link>
-        </p>
-      </form>
-    </div>
+      </label>
+      <label>
+        Correo <span className="req">*</span>
+        <input
+          name="email"
+          type="email"
+          autoComplete="email"
+          value={email}
+          className={emailBlurred && emailInvalid ? "invalid" : undefined}
+          onChange={(e) => setEmail(e.target.value)}
+          onBlur={() => setEmailBlurred(true)}
+          required
+        />
+      </label>
+      <PasswordField
+        label="Contraseña"
+        name="password"
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+        autoComplete="new-password"
+        visible={showPassword}
+        onToggle={() => setShowPassword((value) => !value)}
+        invalid={passwordsMismatch}
+      />
+      <PasswordField
+        label="Confirmar contraseña"
+        name="password2"
+        value={password2}
+        onChange={(e) => setPassword2(e.target.value)}
+        autoComplete="new-password"
+        visible={showPassword2}
+        onToggle={() => setShowPassword2((value) => !value)}
+        invalid={passwordsMismatch}
+      />
+      {error ? <p className="error">{error}</p> : null}
+      <button type="submit" disabled={!formOk || pending}>
+        {pending ? "Enviando código…" : "Enviar código"}
+      </button>
+      <p className="auth-switch">
+        ¿Ya tienes Hub? <Link to="/entrar">Entrar</Link>
+      </p>
+    </form>
   );
 }
