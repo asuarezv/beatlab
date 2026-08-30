@@ -53,7 +53,15 @@ export const GLOSSARY_ENTRIES = [
     term: "System",
     fullName: "Aplicación que emite Beats",
     definition:
-      "Un System es cualquier aplicación de una empresa autorizada a mandar Beats a Hub. Se registra en el Hub de esa empresa y obtiene credenciales JWT para autenticar cada envío. No es un Operator: es un cliente técnico —un producto, un servicio o un job— que publica su salud como Beats.",
+      "Un System es una aplicación o proceso que envía automáticamente señales de vida (Beats) al Hub para indicar que está funcionando y reportar su estado.",
+    examplesLabel: "Ejemplos de System:",
+    examples: [
+      "Una aplicación web.",
+      "Una aplicación móvil.",
+      "Una API.",
+      "Un servicio en segundo plano.",
+      "Un proceso programado (job).",
+    ],
   },
   {
     id: "tipo-de-beat",

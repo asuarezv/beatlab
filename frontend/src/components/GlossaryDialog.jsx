@@ -91,9 +91,21 @@ export default function GlossaryDialog({ entry, open, onClose }) {
         {entry.fullName ? (
           <p className="muted glossary-fullname">{entry.fullName}</p>
         ) : null}
-        <p id={descId} className="glossary-definition">
-          {entry.definition}
-        </p>
+        <div id={descId} className="glossary-body">
+          <p className="glossary-definition">{entry.definition}</p>
+          {entry.examples?.length ? (
+            <>
+              {entry.examplesLabel ? (
+                <p className="glossary-examples-label">{entry.examplesLabel}</p>
+              ) : null}
+              <ul className="glossary-examples">
+                {entry.examples.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </>
+          ) : null}
+        </div>
       </div>
     </div>
   );
