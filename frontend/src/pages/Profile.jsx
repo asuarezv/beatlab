@@ -10,11 +10,20 @@ import {
   isValidPassword,
 } from "../fieldRules.js";
 
+function accountFields(user) {
+  return {
+    firstName: user?.first_name || "",
+    lastName: user?.last_name || "",
+    email: user?.email || "",
+  };
+}
+
 export default function Profile({ session, onSession }) {
   const user = session?.user || {};
-  const [firstName, setFirstName] = useState(user.first_name || "");
-  const [lastName, setLastName] = useState(user.last_name || "");
-  const [email, setEmail] = useState(user.email || "");
+  const saved = accountFields(user);
+  const [firstName, setFirstName] = useState(saved.firstName);
+  const [lastName, setLastName] = useState(saved.lastName);
+  const [email, setEmail] = useState(saved.email);
   const [emailBlurred, setEmailBlurred] = useState(false);
   const [profileError, setProfileError] = useState("");
   const [profileOk, setProfileOk] = useState("");
@@ -39,9 +48,20 @@ export default function Profile({ session, onSession }) {
   const first = firstName.trim();
   const last = lastName.trim();
   const nextEmail = email.trim();
+  const savedFirst = saved.firstName.trim();
+  const savedLast = saved.lastName.trim();
+  const savedEmail = saved.email.trim();
   const emailInvalid = Boolean(nextEmail) && !isValidEmail(nextEmail);
+  const profileDirty =
+    first !== savedFirst ||
+    last !== savedLast ||
+    nextEmail.toLowerCase() !== savedEmail.toLowerCase();
   const profileOkToSave =
-    Boolean(first) && Boolean(last) && Boolean(nextEmail) && isValidEmail(nextEmail);
+    profileDirty &&
+    Boolean(first) &&
+    Boolean(last) &&
+    Boolean(nextEmail) &&
+    isValidEmail(nextEmail);
 
   const current = currentPassword.trim();
   const pass = password.trim();
@@ -52,6 +72,13 @@ export default function Profile({ session, onSession }) {
     isValidPassword(pass) &&
     Boolean(pass2) &&
     pass === pass2;
+
+  useEffect(() => {
+    if (profileDirty) return;
+    setFirstName(saved.firstName);
+    setLastName(saved.lastName);
+    setEmail(saved.email);
+  }, [saved.firstName, saved.lastName, saved.email, profileDirty]);
 
   useEffect(() => {
     if (!passwordChanged) return undefined;
@@ -93,6 +120,10 @@ export default function Profile({ session, onSession }) {
     try {
       const data = await updateProfile(first, last, nextEmail);
       onSession?.(data);
+      const next = accountFields(data.user);
+      setFirstName(next.firstName || first);
+      setLastName(next.lastName || last);
+      setEmail(next.email || nextEmail);
       setProfileOk(data.detail || "Datos actualizados.");
     } catch (err) {
       setProfileError(err.message);
@@ -148,25 +179,30 @@ export default function Profile({ session, onSession }) {
       <h2>Perfil</h2>
       <p className="hint">Datos de la cuenta con la que entras al Hub.</p>
       <div className="profile-cards">
-        <form className="card profile-password" onSubmit={handleProfileSubmit}>
+        <form
+          className="card profile-password"
+          onSubmit={handleProfileSubmit}
+          autoComplete="on"
+        >
           <h3>Datos de la cuenta</h3>
-          <label>
-            Usuario
-            <input
-              name="username"
-              value={user.username || ""}
-              readOnly
-              disabled
-              autoComplete="username"
-            />
-          </label>
+          <div className="profile-readonly">
+            <span>Usuario</span>
+            <strong>{user.username || "—"}</strong>
+          </div>
+          <p className="muted profile-readonly-hint">
+            El usuario no se cambia. Nombre, apellidos y correo sí.
+          </p>
           <label>
             Nombre <span className="req">*</span>
             <input
               name="first_name"
               autoComplete="given-name"
+              placeholder="Nombre"
               value={firstName}
-              onChange={(e) => setFirstName(e.target.value)}
+              onChange={(e) => {
+                setFirstName(e.target.value);
+                setProfileOk("");
+              }}
               required
             />
           </label>
@@ -175,8 +211,12 @@ export default function Profile({ session, onSession }) {
             <input
               name="last_name"
               autoComplete="family-name"
+              placeholder="Apellidos"
               value={lastName}
-              onChange={(e) => setLastName(e.target.value)}
+              onChange={(e) => {
+                setLastName(e.target.value);
+                setProfileOk("");
+              }}
               required
             />
           </label>
@@ -186,9 +226,13 @@ export default function Profile({ session, onSession }) {
               name="email"
               type="email"
               autoComplete="email"
+              placeholder="correo@empresa.com"
               value={email}
               className={emailBlurred && emailInvalid ? "invalid" : undefined}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                setProfileOk("");
+              }}
               onBlur={() => setEmailBlurred(true)}
               required
             />

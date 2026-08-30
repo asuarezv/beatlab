@@ -210,6 +210,42 @@ class HubProfilePasswordTests(APITestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()["detail"], HUB_EMAIL_TAKEN)
 
+    def test_me_includes_empty_name_fields(self):
+        self.staff.first_name = ""
+        self.staff.last_name = ""
+        self.staff.save(update_fields=["first_name", "last_name"])
+        self._hub_session()
+        response = self.client.get("/api/auth/me/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["user"]["first_name"], "")
+        self.assertEqual(response.json()["user"]["last_name"], "")
+        self.assertIn("email", response.json()["user"])
+
+    def test_update_profile_fills_empty_names(self):
+        self.staff.first_name = ""
+        self.staff.last_name = ""
+        self.staff.save(update_fields=["first_name", "last_name"])
+        self._hub_session()
+        response = self.client.patch(
+            "/api/auth/profile/",
+            {
+                "first_name": "Roberto",
+                "last_name": "Labbe",
+                "email": "hubadmin@labbe.test",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["detail"], PROFILE_UPDATED)
+        self.assertEqual(response.json()["user"]["first_name"], "Roberto")
+        self.assertEqual(response.json()["user"]["last_name"], "Labbe")
+        self.staff.refresh_from_db()
+        self.assertEqual(self.staff.first_name, "Roberto")
+        self.assertEqual(self.staff.last_name, "Labbe")
+        me = self.client.get("/api/auth/me/")
+        self.assertEqual(me.json()["user"]["first_name"], "Roberto")
+        self.assertEqual(me.json()["user"]["last_name"], "Labbe")
+
     def test_update_profile_rejects_invalid_email_and_empty_name(self):
         self._hub_session()
         invalid = self.client.patch(
