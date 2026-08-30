@@ -72,8 +72,13 @@ export const GLOSSARY_ENTRIES = [
     id: "system",
     term: "System",
     fullName: "Aplicación que emite Beats",
-    definition:
-      "Un System es una aplicación o proceso que envía automáticamente señales de vida (Beats) al Hub para indicar que está funcionando y reportar su estado.",
+    definition: (term) => [
+      "Un System es una aplicación o proceso que envía automáticamente señales de vida (",
+      term("beat", "Beats"),
+      ") al ",
+      term("hub", "Hub"),
+      " para indicar que está funcionando y reportar su estado.",
+    ],
     examplesLabel: "Ejemplos de System:",
     examples: [
       "Una aplicación web.",
