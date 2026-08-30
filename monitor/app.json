@@ -1,0 +1,20 @@
+{
+  "expo": {
+    "name": "BeatLab Monitor",
+    "slug": "beatlab-monitor",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "scheme": "beatlab-monitor",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.beatlab.monitor"
+    },
+    "android": {
+      "package": "com.beatlab.monitor"
+    },
+    "extra": {
+      "hubUrl": "https://hub.nynusoft.com"
+    }
+  }
+}
