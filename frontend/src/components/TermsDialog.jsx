@@ -2,6 +2,23 @@ import { useEffect, useId, useRef, useState } from "react";
 import { getGlossaryEntry } from "../data/glossary.js";
 import GlossaryDialog from "./GlossaryDialog.jsx";
 
+function TermsGlossaryLink({ termId, children, openId, onOpen }) {
+  const entry = getGlossaryEntry(termId);
+  const label = entry?.term ?? "término";
+  return (
+    <button
+      type="button"
+      className="glossary-term"
+      onClick={() => onOpen(termId)}
+      aria-haspopup="dialog"
+      aria-expanded={openId === termId}
+      aria-label={`Definición de ${label}`}
+    >
+      {children}
+    </button>
+  );
+}
+
 export default function TermsDialog({ open, onClose }) {
   const titleId = useId();
   const descId = useId();
@@ -9,14 +26,26 @@ export default function TermsDialog({ open, onClose }) {
   const closeRef = useRef(null);
   const lastFocusRef = useRef(null);
   const onCloseRef = useRef(onClose);
-  const beatOpenRef = useRef(false);
-  const [beatOpen, setBeatOpen] = useState(false);
-  const beatEntry = getGlossaryEntry("beat");
+  const glossaryOpenRef = useRef(false);
+  const [glossaryId, setGlossaryId] = useState(null);
+  const glossaryEntry = getGlossaryEntry(glossaryId);
   onCloseRef.current = onClose;
-  beatOpenRef.current = beatOpen;
+  glossaryOpenRef.current = Boolean(glossaryId);
+
+  function term(termId, text) {
+    return (
+      <TermsGlossaryLink
+        termId={termId}
+        openId={glossaryId}
+        onOpen={setGlossaryId}
+      >
+        {text}
+      </TermsGlossaryLink>
+    );
+  }
 
   useEffect(() => {
-    if (!open) setBeatOpen(false);
+    if (!open) setGlossaryId(null);
   }, [open]);
 
   useEffect(() => {
@@ -26,7 +55,7 @@ export default function TermsDialog({ open, onClose }) {
     closeRef.current?.focus();
 
     function onKey(event) {
-      if (beatOpenRef.current) return;
+      if (glossaryOpenRef.current) return;
 
       if (event.key === "Escape") {
         event.preventDefault();
@@ -73,7 +102,7 @@ export default function TermsDialog({ open, onClose }) {
       <div
         className="glossary-backdrop"
         onMouseDown={(event) => {
-          if (beatOpen) return;
+          if (glossaryId) return;
           if (event.target === event.currentTarget) onClose();
         }}
       >
@@ -106,14 +135,15 @@ export default function TermsDialog({ open, onClose }) {
             <p>
               BeatLab es un software como servicio (SaaS). Al crear tu Hub
               obtienes un espacio aislado para tu empresa: desde ahí controlas
-              la salud de tus Systems, das de alta Operators y tipos de Beat, y
-              recibes las señales que esos Systems envían.
+              la salud de tus {term("system", "Systems")}, das de alta{" "}
+              {term("operator", "Operators")} y tipos de {term("beat", "Beat")},
+              y recibes las señales que esos {term("system", "Systems")} envían.
             </p>
             <p>
-              La alta incluye una demo de 15 días con un cupo de 10.000 Beats.
-              Durante ese periodo usas un Hub particular, con un
-              límite de tiempo y de mensajes. Al terminar la demo, el acceso y
-              el cupo dependen de un plan comercial.
+              La alta incluye una demo de 15 días con un cupo de 10.000{" "}
+              {term("beat", "Beats")}. Durante ese periodo usas un Hub
+              particular, con un límite de tiempo y de mensajes. Al terminar la
+              demo, el acceso y el cupo dependen de un plan comercial.
             </p>
             <p>
               El Hub está pensado para uso legítimo de tu organización:
@@ -122,25 +152,16 @@ export default function TermsDialog({ open, onClose }) {
               para datos ajenos o ilícitos.
             </p>
             <p>
-              Todos los{" "}
-              <button
-                type="button"
-                className="glossary-term"
-                onClick={() => setBeatOpen(true)}
-                aria-haspopup="dialog"
-                aria-expanded={beatOpen}
-                aria-label="Definición de Beat"
-              >
-                Beats
-              </button>{" "}
-              que se envían están cifrados. Un Beat es la señal autenticada que
-              emite un System; el cifrado protege ese envío hacia el Hub.
+              Todos los {term("beat", "Beats")} que se envían están cifrados. Un{" "}
+              {term("beat", "Beat")} es la señal autenticada que emite un{" "}
+              {term("system", "System")}; el cifrado protege ese envío hacia el
+              Hub.
             </p>
             <p>
               Eres responsable de las cuentas de tu Hub, de las credenciales JWT
-              de tus Systems y de lo que esos Systems publiquen. BeatLab no
-              sustituye tus propios procesos de operación, seguridad o
-              cumplimiento.
+              de tus {term("system", "Systems")} y de lo que esos{" "}
+              {term("system", "Systems")} publiquen. BeatLab no sustituye tus
+              propios procesos de operación, seguridad o cumplimiento.
             </p>
             <p>
               Estos términos describen el servicio de forma breve. No son
@@ -151,9 +172,9 @@ export default function TermsDialog({ open, onClose }) {
         </div>
       </div>
       <GlossaryDialog
-        entry={beatEntry}
-        open={beatOpen}
-        onClose={() => setBeatOpen(false)}
+        entry={glossaryEntry}
+        open={Boolean(glossaryId)}
+        onClose={() => setGlossaryId(null)}
       />
     </>
   );
