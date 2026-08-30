@@ -12,6 +12,12 @@ from django.utils import timezone
 
 from .emails import send_register_otp
 from .models import SignupChallenge
+from .validation import (
+    COMPANY_NAME_ERROR,
+    USERNAME_ERROR,
+    is_valid_company_name,
+    is_valid_username,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +45,10 @@ def validate_signup_fields(*, company_name, username, email, password, password2
     password2 = (password2 or "").strip()
     if not company_name or not username or not email or not password:
         raise ValueError("Empresa, usuario, correo y contraseña son obligatorios.")
+    if not is_valid_company_name(company_name):
+        raise ValueError(COMPANY_NAME_ERROR)
+    if not is_valid_username(username):
+        raise ValueError(USERNAME_ERROR)
     try:
         validate_email(email)
     except DjangoValidationError:

@@ -3,6 +3,12 @@ from django.utils.text import slugify
 from rest_framework import serializers
 
 from .models import Beat, BeatType, Company, Operator, System
+from .validation import (
+    COMPANY_NAME_ERROR,
+    USERNAME_ERROR,
+    is_valid_company_name,
+    is_valid_username,
+)
 
 User = get_user_model()
 
@@ -12,6 +18,14 @@ class CompanySerializer(serializers.ModelSerializer):
         model = Company
         fields = ("id", "name", "slug", "created_at")
         read_only_fields = ("id", "slug", "created_at")
+
+    def validate_name(self, value):
+        name = (value or "").strip()
+        if not name:
+            raise serializers.ValidationError("El nombre de la empresa es obligatorio.")
+        if not is_valid_company_name(name):
+            raise serializers.ValidationError(COMPANY_NAME_ERROR)
+        return name
 
     def create(self, validated_data):
         name = validated_data["name"]
@@ -33,6 +47,14 @@ class OperatorSerializer(serializers.ModelSerializer):
         model = Operator
         fields = ("id", "username", "password", "display_name", "created_at")
         read_only_fields = ("id", "display_name", "created_at")
+
+    def validate_username(self, value):
+        username = (value or "").strip()
+        if not username:
+            raise serializers.ValidationError("El usuario es obligatorio.")
+        if not is_valid_username(username):
+            raise serializers.ValidationError(USERNAME_ERROR)
+        return username
 
     def create(self, validated_data):
         username = validated_data.pop("username").strip()

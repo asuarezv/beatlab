@@ -2,6 +2,12 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import PasswordField from "../components/PasswordField.jsx";
 import { confirmRegisterOtp, requestRegisterOtp } from "../api.js";
+import {
+  COMPANY_NAME_ERROR,
+  USERNAME_ERROR,
+  isValidCompanyName,
+  isValidUsername,
+} from "../fieldRules.js";
 
 export default function Register({ onLogin }) {
   const [companyName, setCompanyName] = useState("");
@@ -11,6 +17,7 @@ export default function Register({ onLogin }) {
   const [password2, setPassword2] = useState("");
   const [otp, setOtp] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [showPassword2, setShowPassword2] = useState(false);
   const [step, setStep] = useState("form");
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
@@ -29,6 +36,14 @@ export default function Register({ onLogin }) {
     setPassword2(pass2);
     if (!nextCompany || !user || !nextEmail || !pass) {
       setError("Empresa, usuario, correo y contraseña son obligatorios.");
+      return;
+    }
+    if (!isValidCompanyName(nextCompany)) {
+      setError(COMPANY_NAME_ERROR);
+      return;
+    }
+    if (!isValidUsername(user)) {
+      setError(USERNAME_ERROR);
       return;
     }
     if (pass !== pass2) {
@@ -167,8 +182,8 @@ export default function Register({ onLogin }) {
           value={password2}
           onChange={(e) => setPassword2(e.target.value)}
           autoComplete="new-password"
-          visible={showPassword}
-          onToggle={() => setShowPassword((value) => !value)}
+          visible={showPassword2}
+          onToggle={() => setShowPassword2((value) => !value)}
         />
         {error ? <p className="error">{error}</p> : null}
         <button type="submit" disabled={pending}>

@@ -16,7 +16,14 @@ async function request(path, options = {}) {
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const error = new Error(data.detail || "No se pudo completar la acción");
+    const firstField = Object.values(data).find(
+      (value) => Array.isArray(value) && value.length,
+    );
+    const message =
+      (typeof data.detail === "string" && data.detail) ||
+      (Array.isArray(firstField) ? firstField[0] : "") ||
+      "No se pudo completar la acción";
+    const error = new Error(message);
     error.status = response.status;
     error.data = data;
     throw error;

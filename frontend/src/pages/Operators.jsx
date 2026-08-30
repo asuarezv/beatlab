@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { createOperator, listOperators } from "../api.js";
+import { USERNAME_ERROR, isValidUsername } from "../fieldRules.js";
 
 export default function Operators() {
   const [items, setItems] = useState([]);
@@ -17,9 +18,15 @@ export default function Operators() {
 
   async function handleSubmit(event) {
     event.preventDefault();
+    const user = username.trim();
+    setUsername(user);
+    if (!isValidUsername(user)) {
+      setError(USERNAME_ERROR);
+      return;
+    }
     setError("");
     try {
-      await createOperator(username, password);
+      await createOperator(user, password);
       setUsername("");
       setPassword("");
       await refresh();
