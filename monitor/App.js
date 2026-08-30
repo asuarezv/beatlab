@@ -17,14 +17,19 @@ export default function App() {
           setSession(null);
           return;
         }
-        setSession(JSON.parse(raw));
+        const parsed = JSON.parse(raw);
+        delete parsed.hubUrl;
+        setSession(parsed);
+        AsyncStorage.setItem(SESSION_KEY, JSON.stringify(parsed));
       })
       .catch(() => setSession(null));
   }, []);
 
   const handleLogin = useCallback(async (next) => {
-    await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(next));
-    setSession(next);
+    const rest = { ...next };
+    delete rest.hubUrl;
+    await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(rest));
+    setSession(rest);
   }, []);
 
   const handleLogout = useCallback(async () => {

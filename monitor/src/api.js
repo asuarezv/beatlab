@@ -1,12 +1,13 @@
 import Constants from "expo-constants";
 
-export function defaultHubUrl() {
+/** Única fuente: `expo.extra.hubUrl` en app.json. */
+export function hubUrl() {
   const extra = Constants.expoConfig?.extra || {};
   return (extra.hubUrl || "https://hub.nynusoft.com").replace(/\/$/, "");
 }
 
-export function monitorWsUrl(hubUrl, token) {
-  const base = hubUrl.replace(/\/$/, "").replace(/^http/, "ws");
+export function monitorWsUrl(token) {
+  const base = hubUrl().replace(/^http/, "ws");
   return `${base}/ws/monitor/?token=${encodeURIComponent(token)}`;
 }
 
@@ -23,8 +24,8 @@ async function readJson(response) {
   return data;
 }
 
-export function loginOperator(hubUrl, username, password) {
-  return fetch(`${hubUrl.replace(/\/$/, "")}/api/monitor/auth/login/`, {
+export function loginOperator(username, password) {
+  return fetch(`${hubUrl()}/api/monitor/auth/login/`, {
     method: "POST",
     headers: {
       Accept: "application/json",
@@ -34,8 +35,8 @@ export function loginOperator(hubUrl, username, password) {
   }).then(readJson);
 }
 
-export function listOperatorBeats(hubUrl, token) {
-  return fetch(`${hubUrl.replace(/\/$/, "")}/api/monitor/beats/`, {
+export function listOperatorBeats(token) {
+  return fetch(`${hubUrl()}/api/monitor/beats/`, {
     headers: {
       Accept: "application/json",
       Authorization: `Bearer ${token}`,

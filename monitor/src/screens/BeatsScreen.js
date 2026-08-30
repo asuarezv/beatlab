@@ -26,7 +26,7 @@ export default function BeatsScreen({ session, onLogout }) {
 
   useEffect(() => {
     let cancelled = false;
-    listOperatorBeats(session.hubUrl, session.token)
+    listOperatorBeats(session.token)
       .then((data) => {
         if (!cancelled) setItems(Array.isArray(data) ? data : []);
       })
@@ -40,7 +40,7 @@ export default function BeatsScreen({ session, onLogout }) {
     return () => {
       cancelled = true;
     };
-  }, [session.hubUrl, session.token, onLogout]);
+  }, [session.token, onLogout]);
 
   useEffect(() => {
     let closed = false;
@@ -49,7 +49,7 @@ export default function BeatsScreen({ session, onLogout }) {
 
     function connect() {
       if (closed) return;
-      socket = new WebSocket(monitorWsUrl(session.hubUrl, session.token));
+      socket = new WebSocket(monitorWsUrl(session.token));
       socket.onopen = () => setLive(true);
       socket.onmessage = (event) => {
         let data;
@@ -78,7 +78,7 @@ export default function BeatsScreen({ session, onLogout }) {
       clearTimeout(retry);
       if (socket) socket.close();
     };
-  }, [session.hubUrl, session.token]);
+  }, [session.token]);
 
   return (
     <View style={styles.wrap}>

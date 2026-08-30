@@ -10,10 +10,9 @@ import {
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { colors } from "../theme";
-import { defaultHubUrl, loginOperator } from "../api";
+import { loginOperator } from "../api";
 
 export default function LoginScreen({ onLogin }) {
-  const [hubUrl, setHubUrl] = useState(defaultHubUrl());
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -23,10 +22,8 @@ export default function LoginScreen({ onLogin }) {
     setError("");
     setBusy(true);
     try {
-      const base = hubUrl.trim().replace(/\/$/, "");
-      const data = await loginOperator(base, username.trim(), password);
+      const data = await loginOperator(username.trim(), password);
       onLogin({
-        hubUrl: base,
         token: data.token,
         operator: data.operator,
         company: data.company,
@@ -49,15 +46,6 @@ export default function LoginScreen({ onLogin }) {
       <Text style={styles.lead}>
         Entra con tu usuario de Operator para ver los Beats de tu Hub.
       </Text>
-      <Text style={styles.label}>Hub</Text>
-      <TextInput
-        style={styles.input}
-        value={hubUrl}
-        onChangeText={setHubUrl}
-        autoCapitalize="none"
-        autoCorrect={false}
-        keyboardType="url"
-      />
       <Text style={styles.label}>Usuario</Text>
       <TextInput
         style={styles.input}
