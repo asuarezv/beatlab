@@ -111,7 +111,7 @@ export default function TermsDialog({ open, onClose }) {
             </p>
             <p>
               La alta incluye una demo de 15 días con un cupo de 10.000 Beats.
-              Durante ese periodo usas el mismo Hub que el producto, con un
+              Durante ese periodo usas un Hub particular, con un
               límite de tiempo y de mensajes. Al terminar la demo, el acceso y
               el cupo dependen de un plan comercial.
             </p>
