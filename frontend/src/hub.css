@@ -262,6 +262,10 @@ nav button {
   color: var(--danger);
 }
 
+input.invalid {
+  border-color: var(--danger);
+}
+
 .landing {
   text-align: center;
   width: min(100%, 34rem);

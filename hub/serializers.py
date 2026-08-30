@@ -49,7 +49,7 @@ class OperatorSerializer(serializers.ModelSerializer):
         read_only_fields = ("id", "display_name", "created_at")
 
     def validate_username(self, value):
-        username = (value or "").strip()
+        username = value or ""
         if not username:
             raise serializers.ValidationError("El usuario es obligatorio.")
         if not is_valid_username(username):
@@ -57,7 +57,7 @@ class OperatorSerializer(serializers.ModelSerializer):
         return username
 
     def create(self, validated_data):
-        username = validated_data.pop("username").strip()
+        username = validated_data.pop("username")
         password = validated_data.pop("password")
         company = self.context["company"]
         if User.objects.filter(username__iexact=username).exists():

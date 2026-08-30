@@ -39,7 +39,7 @@ def _max_attempts() -> int:
 
 def validate_signup_fields(*, company_name, username, email, password, password2):
     company_name = (company_name or "").strip()
-    username = (username or "").strip()
+    username = username or ""
     email = (email or "").strip().lower()
     password = (password or "").strip()
     password2 = (password2 or "").strip()

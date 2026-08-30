@@ -4,9 +4,12 @@ import PasswordField from "../components/PasswordField.jsx";
 import { confirmRegisterOtp, requestRegisterOtp } from "../api.js";
 import {
   COMPANY_NAME_ERROR,
+  EMAIL_ERROR,
   USERNAME_ERROR,
   isValidCompanyName,
+  isValidEmail,
   isValidUsername,
+  sanitizeUsername,
 } from "../fieldRules.js";
 
 export default function Register({ onLogin }) {
@@ -21,11 +24,14 @@ export default function Register({ onLogin }) {
   const [step, setStep] = useState("form");
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
+  const [emailBlurred, setEmailBlurred] = useState(false);
+
+  const emailInvalid = Boolean(email) && !isValidEmail(email.trim());
 
   async function handleStart(event) {
     event.preventDefault();
     const nextCompany = companyName.trim();
-    const user = username.trim();
+    const user = username;
     const nextEmail = email.trim();
     const pass = password.trim();
     const pass2 = password2.trim();
@@ -34,6 +40,9 @@ export default function Register({ onLogin }) {
     setEmail(nextEmail);
     setPassword(pass);
     setPassword2(pass2);
+    if (nextEmail) {
+      setEmailBlurred(true);
+    }
     if (!nextCompany || !user || !nextEmail || !pass) {
       setError("Empresa, usuario, correo y contraseña son obligatorios.");
       return;
@@ -44,6 +53,10 @@ export default function Register({ onLogin }) {
     }
     if (!isValidUsername(user)) {
       setError(USERNAME_ERROR);
+      return;
+    }
+    if (!isValidEmail(nextEmail)) {
+      setError(EMAIL_ERROR);
       return;
     }
     if (pass !== pass2) {
@@ -152,7 +165,7 @@ export default function Register({ onLogin }) {
             name="username"
             autoComplete="username"
             value={username}
-            onChange={(e) => setUsername(e.target.value)}
+            onChange={(e) => setUsername(sanitizeUsername(e.target.value))}
             required
           />
         </label>
@@ -163,7 +176,9 @@ export default function Register({ onLogin }) {
             type="email"
             autoComplete="email"
             value={email}
+            className={emailBlurred && emailInvalid ? "invalid" : undefined}
             onChange={(e) => setEmail(e.target.value)}
+            onBlur={() => setEmailBlurred(true)}
             required
           />
         </label>

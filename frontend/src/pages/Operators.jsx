@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { createOperator, listOperators } from "../api.js";
-import { USERNAME_ERROR, isValidUsername } from "../fieldRules.js";
+import { USERNAME_ERROR, isValidUsername, sanitizeUsername } from "../fieldRules.js";
 
 export default function Operators() {
   const [items, setItems] = useState([]);
@@ -18,7 +18,7 @@ export default function Operators() {
 
   async function handleSubmit(event) {
     event.preventDefault();
-    const user = username.trim();
+    const user = username;
     setUsername(user);
     if (!isValidUsername(user)) {
       setError(USERNAME_ERROR);
@@ -42,7 +42,7 @@ export default function Operators() {
         <input
           placeholder="usuario"
           value={username}
-          onChange={(e) => setUsername(e.target.value)}
+          onChange={(e) => setUsername(sanitizeUsername(e.target.value))}
           required
         />
         <input

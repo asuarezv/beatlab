@@ -14,6 +14,7 @@ from rest_framework.response import Response
 
 from .models import Beat, BeatType, Company, Operator, System
 from .otp import consume_signup_otp, issue_signup_otp, validate_signup_fields
+from .validation import USERNAME_ERROR, is_valid_username
 from .quota import (
     assert_can_consume_beat,
     assert_company_writable,
@@ -101,10 +102,12 @@ def login_view(request):
     data = _json_body(request)
     if data is None:
         return JsonResponse({"detail": "JSON inválido"}, status=400)
-    username = (data.get("username") or "").strip()
+    username = data.get("username") or ""
     password = (data.get("password") or "").strip()
     if not username or not password:
         return JsonResponse({"detail": "Usuario y contraseña son obligatorios."}, status=400)
+    if not is_valid_username(username):
+        return JsonResponse({"detail": USERNAME_ERROR}, status=400)
     stored = User.objects.filter(username__iexact=username).first()
     user = authenticate(
         request,

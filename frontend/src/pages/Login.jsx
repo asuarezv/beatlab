@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { login } from "../api.js";
+import { USERNAME_ERROR, isValidUsername, sanitizeUsername } from "../fieldRules.js";
 
 export default function Login({ onLogin }) {
   const [username, setUsername] = useState("");
@@ -10,12 +11,16 @@ export default function Login({ onLogin }) {
 
   async function handleSubmit(event) {
     event.preventDefault();
-    const user = username.trim();
+    const user = username;
     const pass = password.trim();
     setUsername(user);
     setPassword(pass);
     if (!user || !pass) {
       setError("Usuario y contraseña son obligatorios.");
+      return;
+    }
+    if (!isValidUsername(user)) {
+      setError(USERNAME_ERROR);
       return;
     }
     setError("");
@@ -43,7 +48,7 @@ export default function Login({ onLogin }) {
             name="username"
             autoComplete="username"
             value={username}
-            onChange={(e) => setUsername(e.target.value)}
+            onChange={(e) => setUsername(sanitizeUsername(e.target.value))}
             required
           />
         </label>
