@@ -1,6 +1,9 @@
 [Unit]
-Description=BeatLab Hub (Gunicorn)
+Description=BeatLab Hub (Daphne)
 After=network.target postgresql.service
+
+# Un solo proceso ASGI: HTTP + WebSocket. InMemoryChannelLayer no cruza
+# workers; para escalar hace falta Redis y más procesos Daphne.
 
 [Service]
 Type=simple
@@ -9,13 +12,12 @@ Group=beatlab
 WorkingDirectory=/opt/beatlab
 EnvironmentFile=/opt/beatlab/.env
 Environment=DJANGO_SETTINGS_MODULE=config.settings
-ExecStart=/opt/beatlab/venv/bin/gunicorn \
-    --bind 127.0.0.1:8009 \
-    --workers 2 \
-    --timeout 60 \
-    --access-logfile - \
-    --error-logfile - \
-    config.wsgi:application
+ExecStart=/opt/beatlab/venv/bin/daphne \
+    -b 127.0.0.1 \
+    -p 8009 \
+    --access-log - \
+    --proxy-headers \
+    config.asgi:application
 Restart=on-failure
 RestartSec=5
 

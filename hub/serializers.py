@@ -85,10 +85,23 @@ class BeatTypeSerializer(serializers.ModelSerializer):
 
 
 class SystemSerializer(serializers.ModelSerializer):
+    has_jwt = serializers.SerializerMethodField()
+
     class Meta:
         model = System
-        fields = ("id", "name", "slug", "is_active", "created_at")
-        read_only_fields = ("id", "slug", "created_at")
+        fields = (
+            "id",
+            "name",
+            "slug",
+            "is_active",
+            "has_jwt",
+            "jwt_issued_at",
+            "created_at",
+        )
+        read_only_fields = ("id", "slug", "has_jwt", "jwt_issued_at", "created_at")
+
+    def get_has_jwt(self, obj):
+        return bool(obj.jwt_hash)
 
     def create(self, validated_data):
         company = self.context["company"]
@@ -137,3 +150,16 @@ class BeatSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         return Beat.objects.create(company=self.context["company"], **validated_data)
+
+
+class IngestBeatSerializer(serializers.Serializer):
+    type = serializers.SlugField(max_length=80)
+    title = serializers.CharField(max_length=200)
+    payload = serializers.JSONField(required=False, default=dict)
+
+    def validate_payload(self, value):
+        if value is None:
+            return {}
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("El payload debe ser un objeto.")
+        return value

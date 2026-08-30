@@ -33,6 +33,18 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!session) return undefined;
+    const id = setInterval(() => {
+      fetchMe()
+        .then((data) => {
+          if (data.user) setSession(data);
+        })
+        .catch(() => {});
+    }, 5000);
+    return () => clearInterval(id);
+  }, [Boolean(session)]);
+
   if (session === undefined) {
     return (
       <Routes>

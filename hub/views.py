@@ -8,11 +8,20 @@ from django.utils.text import slugify
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_POST
 from rest_framework import status, viewsets
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.decorators import action, api_view, authentication_classes, permission_classes
+from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
+from .authentication import (
+    IsOperatorToken,
+    IsSystemJWT,
+    OperatorTokenAuthentication,
+    SystemJWTAuthentication,
+)
 from .models import Beat, BeatType, Company, Operator, System
+from .notify import beat_payload, notify_company_beat
+from .tokens import issue_operator_jwt, issue_system_jwt
 from .otp import consume_signup_otp, issue_signup_otp, validate_signup_fields
 from .validation import USERNAME_ERROR, is_valid_username
 from .quota import (
@@ -26,6 +35,7 @@ from .serializers import (
     BeatSerializer,
     BeatTypeSerializer,
     CompanySerializer,
+    IngestBeatSerializer,
     OperatorSerializer,
     SystemSerializer,
 )
@@ -275,15 +285,140 @@ class SystemViewSet(TenantViewSet):
             return System.objects.none()
         return System.objects.filter(company=self.company)
 
+    @action(detail=True, methods=["post"], url_path="jwt")
+    def issue_jwt(self, request, pk=None):
+        system = self.get_object()
+        rotated = bool(system.jwt_hash)
+        token = issue_system_jwt(system)
+        return Response(
+            {
+                "token": token,
+                "issued_at": system.jwt_issued_at,
+                "rotated": rotated,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
 
 class BeatViewSet(TenantViewSet):
     serializer_class = BeatSerializer
+    http_method_names = ["get", "head", "options"]
 
     def get_queryset(self):
         if not self.company:
             return Beat.objects.none()
         return Beat.objects.filter(company=self.company).select_related("system", "beat_type")
 
-    def perform_create(self, serializer):
-        assert_can_consume_beat(self.company)
-        serializer.save()
+
+@api_view(["POST"])
+@authentication_classes([SystemJWTAuthentication])
+@permission_classes([IsSystemJWT])
+def ingest_beat(request):
+    system = request.auth
+    if not system.is_active:
+        return Response(
+            {"detail": "El System está inactivo."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+    serializer = IngestBeatSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    data = serializer.validated_data
+    beat_type = BeatType.objects.filter(
+        company=system.company,
+        slug=data["type"],
+    ).first()
+    if not beat_type:
+        return Response(
+            {"detail": "Tipo de Beat desconocido."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        with transaction.atomic():
+            company = Company.objects.select_for_update().get(pk=system.company_id)
+            assert_can_consume_beat(company)
+            beat = Beat.objects.create(
+                company=company,
+                system=system,
+                beat_type=beat_type,
+                title=data["title"],
+                payload=data.get("payload") or {},
+            )
+    except PermissionDenied as exc:
+        return Response({"detail": str(exc.detail)}, status=status.HTTP_403_FORBIDDEN)
+    except ValidationError as exc:
+        detail = exc.detail
+        if isinstance(detail, (list, dict)):
+            detail = (
+                detail[0]
+                if isinstance(detail, list)
+                else next(iter(detail.values()), "No quedan Beats en el paquete.")
+            )
+            if isinstance(detail, list):
+                detail = detail[0]
+        return Response({"detail": str(detail)}, status=status.HTTP_409_CONFLICT)
+
+    notify_company_beat(beat)
+    return Response(beat_payload(beat), status=status.HTTP_201_CREATED)
+
+
+@api_view(["POST"])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def monitor_login(request):
+    username = request.data.get("username") or ""
+    password = (request.data.get("password") or "").strip()
+    if not username or not password:
+        return Response(
+            {"detail": "Usuario y contraseña son obligatorios."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if not is_valid_username(username):
+        return Response({"detail": USERNAME_ERROR}, status=status.HTTP_400_BAD_REQUEST)
+    stored = User.objects.filter(username__iexact=username).first()
+    user = authenticate(
+        request,
+        username=stored.username if stored else username,
+        password=password,
+    )
+    if user is None or not user.is_active:
+        return Response(
+            {"detail": "Usuario o contraseña no válidos"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    operator = (
+        Operator.objects.filter(user=user)
+        .select_related("company")
+        .order_by("id")
+        .first()
+    )
+    if not operator:
+        return Response(
+            {"detail": "Este usuario no es Operator."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    return Response(
+        {
+            "token": issue_operator_jwt(operator),
+            "operator": {
+                "id": operator.id,
+                "display_name": user.get_full_name().strip() or user.username,
+            },
+            "company": {
+                "id": operator.company_id,
+                "name": operator.company.name,
+            },
+        }
+    )
+
+
+@api_view(["GET"])
+@authentication_classes([OperatorTokenAuthentication])
+@permission_classes([IsOperatorToken])
+def monitor_beats(request):
+    operator = request.auth
+    beats = (
+        Beat.objects.filter(company=operator.company)
+        .select_related("system", "beat_type")[:100]
+    )
+    return Response([beat_payload(beat) for beat in beats])

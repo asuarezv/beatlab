@@ -347,6 +347,67 @@ nav button {
   flex: 1 1 140px;
 }
 
+.panel {
+  margin: 0 0 2rem;
+}
+
+.panel h3 {
+  margin: 0 0 0.55rem;
+  font-size: 1.08rem;
+  letter-spacing: -0.02em;
+}
+
+.hint {
+  margin: 0 0 0.85rem;
+  color: var(--muted);
+  font-size: 0.94rem;
+  line-height: 1.55;
+}
+
+.hint code,
+.muted code {
+  font-size: 0.86em;
+}
+
+.code-block {
+  margin: 0 0 0.95rem;
+  padding: 0.85rem 1rem;
+  background: #0b1017;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow-x: auto;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.token-box {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  word-break: break-all;
+}
+
+.token-panel {
+  margin-top: 0.35rem;
+}
+
+.ok {
+  color: var(--accent);
+  margin: 0 0 0.55rem;
+}
+
+button.secondary {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--line);
+}
+
+.beat-when {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 0.82rem;
+}
+
 .list {
   list-style: none;
   padding: 0;

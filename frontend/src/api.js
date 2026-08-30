@@ -123,9 +123,9 @@ export function listBeats() {
   return request("/api/beats/");
 }
 
-export function createBeat(payload) {
-  return request("/api/beats/", {
+export function issueSystemJwt(systemId) {
+  return request(`/api/systems/${systemId}/jwt/`, {
     method: "POST",
-    body: JSON.stringify(payload),
+    body: "{}",
   });
 }

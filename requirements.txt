@@ -1,6 +1,9 @@
 Django>=5.2,<5.3
 djangorestframework>=3.16
 gunicorn>=23.0
+channels>=4.2
+daphne>=4.1
+PyJWT>=2.9
 psycopg[binary]>=3.2
 python-dotenv>=1.0
 dj-database-url>=2.3

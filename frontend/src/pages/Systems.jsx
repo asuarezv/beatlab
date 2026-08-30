@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { createSystem, listSystems } from "../api.js";
 
 export default function Systems() {
@@ -29,6 +30,9 @@ export default function Systems() {
   return (
     <section>
       <h2>Systems</h2>
+      <p className="hint">
+        El JWT de cada System se crea y rota en <Link to="/beats">Beats</Link>.
+      </p>
       <form className="row" onSubmit={handleSubmit}>
         <input
           placeholder="nombre del sistema"
@@ -43,6 +47,7 @@ export default function Systems() {
         {items.map((item) => (
           <li key={item.id}>
             {item.name} {item.is_active ? "" : "(inactivo)"}
+            <span className="muted"> {item.has_jwt ? "· JWT activo" : "· sin JWT"}</span>
           </li>
         ))}
         {!items.length ? <li className="muted">Aún no hay Systems.</li> : null}

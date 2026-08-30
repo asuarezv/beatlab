@@ -129,6 +129,8 @@ class System(models.Model):
     name = models.CharField(max_length=160)
     slug = models.SlugField()
     is_active = models.BooleanField(default=True)
+    jwt_hash = models.CharField(max_length=64, blank=True, default="")
+    jwt_issued_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

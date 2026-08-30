@@ -73,6 +73,8 @@ jobs:
             venv/bin/python manage.py migrate --noinput
           sudo -u beatlab env DJANGO_SETTINGS_MODULE=config.settings \
             venv/bin/python manage.py collectstatic --noinput
+          cp /opt/beatlab/deploy/beatlab.service /etc/systemd/system/beatlab.service
+          systemctl daemon-reload
           systemctl restart beatlab
           cp /opt/beatlab/deploy/nginx-hub.conf /etc/nginx/sites-available/hub
           ln -sfn /etc/nginx/sites-available/hub /etc/nginx/sites-enabled/hub
