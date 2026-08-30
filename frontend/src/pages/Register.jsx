@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import OtpInput from "../components/OtpInput.jsx";
 import PasswordField from "../components/PasswordField.jsx";
 import TermsDialog from "../components/TermsDialog.jsx";
 import { confirmRegisterOtp, requestRegisterOtp } from "../api.js";
@@ -27,6 +28,7 @@ export default function Register({ onLogin }) {
   const [pending, setPending] = useState(false);
   const [emailBlurred, setEmailBlurred] = useState(false);
   const [termsOpen, setTermsOpen] = useState(false);
+  const verifyingRef = useRef(false);
 
   const emailInvalid = Boolean(email) && !isValidEmail(email.trim());
   const pass = password.trim();
@@ -97,23 +99,39 @@ export default function Register({ onLogin }) {
     }
   }
 
-  async function handleVerify(event) {
-    event.preventDefault();
-    const code = otp.trim();
-    setOtp(code);
-    if (!code) {
-      setError("Escribe el código que te enviamos.");
+  async function verifyOtp(code) {
+    const next = String(code ?? otp).replace(/\D/g, "");
+    setOtp(next);
+    if (next.length !== 6) {
+      setError("Escribe el código de 6 dígitos que te enviamos.");
       return;
     }
+    if (verifyingRef.current) {
+      return;
+    }
+    verifyingRef.current = true;
     setError("");
     setPending(true);
     try {
-      const data = await confirmRegisterOtp(email.trim(), code);
+      const data = await confirmRegisterOtp(email.trim(), next);
       onLogin(data);
     } catch (err) {
       setError(err.message);
     } finally {
+      verifyingRef.current = false;
       setPending(false);
+    }
+  }
+
+  function handleVerify(event) {
+    event.preventDefault();
+    verifyOtp(otp);
+  }
+
+  function handleOtpChange(next) {
+    setOtp(next);
+    if (error) {
+      setError("");
     }
   }
 
@@ -127,19 +145,19 @@ export default function Register({ onLogin }) {
         <p className="muted">
           Enviamos un código a <strong>{email}</strong> desde info@nynusoft.com.
         </p>
-        <label>
+        <label htmlFor="otp">
           Código <span className="req">*</span>
-          <input
-            name="otp"
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            value={otp}
-            onChange={(e) => setOtp(e.target.value)}
-            required
-          />
         </label>
+        <OtpInput
+          id="otp"
+          value={otp}
+          onChange={handleOtpChange}
+          onComplete={verifyOtp}
+          disabled={pending}
+          invalid={Boolean(error)}
+        />
         {error ? <p className="error">{error}</p> : null}
-        <button type="submit" disabled={pending}>
+        <button type="submit" disabled={pending || otp.length !== 6}>
           {pending ? "Verificando…" : "Crear Hub"}
         </button>
         <p className="auth-switch">
@@ -147,7 +165,11 @@ export default function Register({ onLogin }) {
             type="button"
             className="linkish"
             disabled={pending}
-            onClick={() => setStep("form")}
+            onClick={() => {
+              setOtp("");
+              setError("");
+              setStep("form");
+            }}
           >
             Volver
           </button>

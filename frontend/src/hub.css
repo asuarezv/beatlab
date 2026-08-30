@@ -359,6 +359,34 @@ input.invalid {
   border-color: var(--danger);
 }
 
+.otp-field {
+  display: flex;
+  gap: 0.45rem;
+  justify-content: space-between;
+  margin: 0.15rem 0 0;
+}
+
+.card .otp-field input,
+.center .card .otp-field input,
+.public-shell-body .card .otp-field input {
+  display: block;
+  width: 2.6rem;
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 3.1rem;
+  padding: 0.7rem 0.15rem;
+  text-align: center;
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.card .otp-field input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+
 .landing {
   text-align: center;
   width: min(100%, 34rem);
