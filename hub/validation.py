@@ -2,6 +2,7 @@ import re
 
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.validators import validate_email
 
 COMPANY_NAME_ERROR = (
     "El nombre de la empresa solo puede incluir letras, números, espacios "
@@ -13,7 +14,11 @@ USERNAME_ERROR = (
 
 USERNAME_RE = re.compile(r"^[A-Za-z0-9]+$")
 PERSON_NAME_ERROR = "El nombre y los apellidos son obligatorios."
+EMAIL_REQUIRED = "El correo es obligatorio."
+EMAIL_INVALID = "El correo no es válido."
 OPERATOR_EMAIL_TAKEN = "Ese correo ya está dado de alta."
+HUB_EMAIL_TAKEN = "Ese correo ya pertenece a una cuenta del Hub."
+PROFILE_UPDATED = "Datos actualizados."
 PASSWORD_MISMATCH_ERROR = "Las contraseñas no coinciden."
 CURRENT_PASSWORD_ERROR = "La contraseña actual no es correcta."
 PASSWORD_CHANGE_REQUIRED = "La contraseña actual y la nueva son obligatorias."
@@ -68,3 +73,49 @@ def email_already_used(email: str, *, exclude_operator_id=None) -> bool:
     if exclude_operator_id:
         users = users.exclude(operator_profiles__pk=exclude_operator_id)
     return users.exists()
+
+
+def assert_email_available(
+    email: str, *, exclude_operator_id=None, exclude_user_id=None
+) -> None:
+    from django.contrib.auth import get_user_model
+
+    from .models import Operator
+
+    email = (email or "").strip().lower()
+    if not email:
+        return
+    operators = Operator.objects.filter(email__iexact=email)
+    if exclude_operator_id:
+        operators = operators.exclude(pk=exclude_operator_id)
+    if operators.exists():
+        raise ValueError(OPERATOR_EMAIL_TAKEN)
+    users = get_user_model().objects.filter(email__iexact=email)
+    if exclude_operator_id:
+        users = users.exclude(operator_profiles__pk=exclude_operator_id)
+    if exclude_user_id:
+        users = users.exclude(pk=exclude_user_id)
+    if users.exists():
+        raise ValueError(HUB_EMAIL_TAKEN)
+
+
+def validate_profile_fields(
+    *, first_name, last_name, email, exclude_operator_id=None, exclude_user_id=None
+):
+    first_name = normalize_person_name(first_name)
+    last_name = normalize_person_name(last_name)
+    email = (email or "").strip().lower()
+    if not first_name or not last_name:
+        raise ValueError(PERSON_NAME_ERROR)
+    if not email:
+        raise ValueError(EMAIL_REQUIRED)
+    try:
+        validate_email(email)
+    except DjangoValidationError as exc:
+        raise ValueError(EMAIL_INVALID) from exc
+    assert_email_available(
+        email,
+        exclude_operator_id=exclude_operator_id,
+        exclude_user_id=exclude_user_id,
+    )
+    return first_name, last_name, email

@@ -65,6 +65,7 @@ export default function App() {
           <Route path="registro" element={<Register onLogin={setSession} />} />
           <Route path="entrar" element={<Login onLogin={setSession} />} />
           <Route path="login" element={<Navigate to="/entrar" replace />} />
+          <Route path="perfil" element={<Navigate to="/entrar" replace />} />
           <Route path="glosario" element={<Navigate to="/entrar" replace />} />
           <Route path="*" element={<Login onLogin={setSession} />} />
         </Route>
@@ -82,7 +83,7 @@ export default function App() {
         <Route path="tipos" element={<BeatTypes />} />
         <Route path="beats" element={<Beats />} />
         <Route path="glosario" element={<Glossary />} />
-        <Route path="perfil" element={<Profile session={session} />} />
+        <Route path="perfil" element={<Profile session={session} onSession={setSession} />} />
         <Route path="login" element={<Navigate to="/" replace />} />
         <Route path="entrar" element={<Navigate to="/" replace />} />
         <Route path="registro" element={<Navigate to="/" replace />} />

@@ -1,18 +1,34 @@
 import { useEffect, useState } from "react";
 import {
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
+  View,
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { colors } from "../theme";
-import { fetchOperatorMe, setOperatorPassword } from "../api";
+import {
+  fetchOperatorMe,
+  setOperatorPassword,
+  updateOperatorProfile,
+} from "../api";
 import PasswordField from "../components/PasswordField";
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export default function ProfileScreen({ session, onBack, onSession, onLogout }) {
+  const [firstName, setFirstName] = useState(session.operator?.first_name || "");
+  const [lastName, setLastName] = useState(session.operator?.last_name || "");
+  const [email, setEmail] = useState(session.operator?.email || "");
+  const [profileError, setProfileError] = useState("");
+  const [profileOk, setProfileOk] = useState("");
+  const [profileBusy, setProfileBusy] = useState(false);
+
   const [hasPassword, setHasPassword] = useState(
     Boolean(session.operator?.has_password),
   );
@@ -22,14 +38,22 @@ export default function ProfileScreen({ session, onBack, onSession, onLogout }) 
   const [showCurrent, setShowCurrent] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showPassword2, setShowPassword2] = useState(false);
-  const [error, setError] = useState("");
-  const [ok, setOk] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [passError, setPassError] = useState("");
+  const [passBusy, setPassBusy] = useState(false);
+  const [passwordChanged, setPasswordChanged] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  const first = firstName.trim();
+  const last = lastName.trim();
+  const nextEmail = email.trim();
+  const emailInvalid = Boolean(nextEmail) && !EMAIL_RE.test(nextEmail);
+  const canSaveProfile =
+    Boolean(first) && Boolean(last) && Boolean(nextEmail) && EMAIL_RE.test(nextEmail);
 
   const pass = password.trim();
   const pass2 = password2.trim();
   const mismatch = Boolean(pass) && Boolean(pass2) && pass !== pass2;
-  const canSubmit =
+  const canSubmitPassword =
     Boolean(pass) &&
     pass.length >= 8 &&
     Boolean(pass2) &&
@@ -42,44 +66,74 @@ export default function ProfileScreen({ session, onBack, onSession, onLogout }) 
       .then((data) => {
         if (cancelled) return;
         setHasPassword(Boolean(data.operator?.has_password));
+        setFirstName(data.operator?.first_name || "");
+        setLastName(data.operator?.last_name || "");
+        setEmail(data.operator?.email || "");
       })
       .catch((err) => {
         if (err.status === 401) {
           onLogout();
           return;
         }
-        if (!cancelled) setError(err.message);
+        if (!cancelled) setProfileError(err.message);
       });
     return () => {
       cancelled = true;
     };
   }, [session.token, onLogout]);
 
-  async function handleSubmit() {
+  async function handleProfileSave() {
+    const nextFirst = firstName.trim();
+    const nextLast = lastName.trim();
+    const nextMail = email.trim();
+    setFirstName(nextFirst);
+    setLastName(nextLast);
+    setEmail(nextMail);
+    if (!nextFirst || !nextLast || !nextMail) {
+      setProfileOk("");
+      setProfileError("El nombre, los apellidos y el correo son obligatorios.");
+      return;
+    }
+    if (!EMAIL_RE.test(nextMail)) {
+      setProfileOk("");
+      setProfileError("El correo no es válido.");
+      return;
+    }
+    setProfileError("");
+    setProfileOk("");
+    setProfileBusy(true);
+    try {
+      const data = await updateOperatorProfile(session.token, {
+        first_name: nextFirst,
+        last_name: nextLast,
+        email: nextMail,
+      });
+      onSession({
+        ...session,
+        operator: { ...session.operator, ...data.operator },
+      });
+      setProfileOk(data.detail || "Datos actualizados.");
+    } catch (err) {
+      if (err.status === 401) {
+        onLogout();
+        return;
+      }
+      setProfileError(err.message);
+    } finally {
+      setProfileBusy(false);
+    }
+  }
+
+  async function handlePasswordSubmit() {
+    if (!canSubmitPassword) return;
     const nextCurrent = currentPassword.trim();
     const nextPassword = password.trim();
     const nextPassword2 = password2.trim();
     setCurrentPassword(nextCurrent);
     setPassword(nextPassword);
     setPassword2(nextPassword2);
-    if (!nextPassword || !nextPassword2) {
-      setError("La contraseña nueva y la confirmación son obligatorias.");
-      setOk("");
-      return;
-    }
-    if (nextPassword !== nextPassword2) {
-      setError("Las contraseñas no coinciden.");
-      setOk("");
-      return;
-    }
-    if (hasPassword && !nextCurrent) {
-      setError("La contraseña actual y la nueva son obligatorias.");
-      setOk("");
-      return;
-    }
-    setError("");
-    setOk("");
-    setBusy(true);
+    setPassError("");
+    setPassBusy(true);
     try {
       const payload = {
         password: nextPassword,
@@ -88,25 +142,26 @@ export default function ProfileScreen({ session, onBack, onSession, onLogout }) 
       if (hasPassword) {
         payload.current_password = nextCurrent;
       }
-      const data = await setOperatorPassword(session.token, payload);
-      setHasPassword(true);
+      await setOperatorPassword(session.token, payload);
       setCurrentPassword("");
       setPassword("");
       setPassword2("");
-      setOk(data.detail || "Contraseña actualizada.");
-      onSession({
-        ...session,
-        operator: { ...session.operator, has_password: true },
-      });
+      setPasswordChanged(true);
     } catch (err) {
       if (err.status === 401) {
         onLogout();
         return;
       }
-      setError(err.message);
+      setPassError(err.message);
     } finally {
-      setBusy(false);
+      setPassBusy(false);
     }
+  }
+
+  async function handleAcceptLogout() {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    await onLogout();
   }
 
   return (
@@ -128,7 +183,54 @@ export default function ProfileScreen({ session, onBack, onSession, onLogout }) 
           {session.operator?.display_name}
           {session.operator?.email ? ` · ${session.operator.email}` : ""}
         </Text>
-        <Text style={styles.section}>
+        <Text style={styles.section}>Datos de la cuenta</Text>
+        <Text style={styles.hint}>
+          Nombre, apellidos y correo con los que entras a Monitor.
+        </Text>
+        <Text style={styles.label}>Nombre</Text>
+        <TextInput
+          style={styles.input}
+          value={firstName}
+          onChangeText={setFirstName}
+          autoCapitalize="words"
+          autoComplete="given-name"
+          textContentType="givenName"
+        />
+        <Text style={styles.label}>Apellidos</Text>
+        <TextInput
+          style={styles.input}
+          value={lastName}
+          onChangeText={setLastName}
+          autoCapitalize="words"
+          autoComplete="family-name"
+          textContentType="familyName"
+        />
+        <Text style={styles.label}>Correo</Text>
+        <TextInput
+          style={[styles.input, emailInvalid && styles.invalid]}
+          value={email}
+          onChangeText={setEmail}
+          autoCapitalize="none"
+          autoCorrect={false}
+          keyboardType="email-address"
+          autoComplete="email"
+          textContentType="emailAddress"
+        />
+        {profileError ? <Text style={styles.error}>{profileError}</Text> : null}
+        {profileOk ? <Text style={styles.ok}>{profileOk}</Text> : null}
+        <Pressable
+          style={[
+            styles.button,
+            (!canSaveProfile || profileBusy) && styles.disabled,
+          ]}
+          onPress={handleProfileSave}
+          disabled={!canSaveProfile || profileBusy}
+        >
+          <Text style={styles.buttonText}>
+            {profileBusy ? "Guardando…" : "Guardar datos"}
+          </Text>
+        </Pressable>
+        <Text style={[styles.section, styles.sectionGap]}>
           {hasPassword ? "Cambiar contraseña" : "Crear contraseña"}
         </Text>
         <Text style={styles.hint}>
@@ -172,22 +274,53 @@ export default function ProfileScreen({ session, onBack, onSession, onLogout }) 
         {mismatch ? (
           <Text style={styles.error}>Las contraseñas no coinciden.</Text>
         ) : null}
-        {error ? <Text style={styles.error}>{error}</Text> : null}
-        {ok ? <Text style={styles.ok}>{ok}</Text> : null}
+        {passError ? <Text style={styles.error}>{passError}</Text> : null}
         <Pressable
-          style={[styles.button, (!canSubmit || busy) && styles.disabled]}
-          onPress={handleSubmit}
-          disabled={!canSubmit || busy}
+          style={[
+            styles.button,
+            (!canSubmitPassword || passBusy) && styles.disabled,
+          ]}
+          onPress={handlePasswordSubmit}
+          disabled={!canSubmitPassword || passBusy}
         >
           <Text style={styles.buttonText}>
-            {busy
+            {passBusy
               ? "Guardando…"
               : hasPassword
-                ? "Cambiar contraseña"
+                ? "Actualizar contraseña"
                 : "Crear contraseña"}
           </Text>
         </Pressable>
       </ScrollView>
+      <Modal
+        visible={passwordChanged}
+        transparent
+        animationType="fade"
+        onRequestClose={handleAcceptLogout}
+      >
+        <View style={styles.modalBackdrop}>
+          <View
+            style={styles.modalCard}
+            accessibilityRole="alert"
+            accessibilityViewIsModal
+          >
+            <Text style={styles.modalEyebrow}>Perfil</Text>
+            <Text style={styles.modalTitle}>Contraseña actualizada</Text>
+            <Text style={styles.modalBody}>
+              La contraseña se cambió. Inicia sesión de nuevo.
+            </Text>
+            <Pressable
+              style={[styles.button, styles.modalButton, loggingOut && styles.disabled]}
+              onPress={handleAcceptLogout}
+              disabled={loggingOut}
+            >
+              <Text style={styles.buttonText}>
+                {loggingOut ? "Saliendo…" : "Aceptar"}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -233,6 +366,9 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     marginBottom: 8,
   },
+  sectionGap: {
+    marginTop: 32,
+  },
   hint: {
     color: colors.muted,
     fontSize: 14,
@@ -243,6 +379,18 @@ const styles = StyleSheet.create({
     color: colors.muted,
     marginBottom: 6,
     marginTop: 10,
+  },
+  input: {
+    backgroundColor: "#0b1017",
+    borderColor: colors.line,
+    borderWidth: 1,
+    borderRadius: 8,
+    color: colors.text,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  invalid: {
+    borderColor: colors.danger,
   },
   error: {
     color: colors.danger,
@@ -266,5 +414,39 @@ const styles = StyleSheet.create({
     color: "#042028",
     fontWeight: "700",
     fontSize: 16,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.62)",
+    justifyContent: "center",
+    paddingHorizontal: 24,
+  },
+  modalCard: {
+    backgroundColor: colors.card,
+    borderColor: colors.line,
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 22,
+  },
+  modalEyebrow: {
+    color: colors.accent,
+    letterSpacing: 2.2,
+    textTransform: "uppercase",
+    fontSize: 11,
+    marginBottom: 6,
+  },
+  modalTitle: {
+    color: colors.text,
+    fontSize: 22,
+    fontWeight: "700",
+  },
+  modalBody: {
+    color: colors.muted,
+    fontSize: 15,
+    lineHeight: 22,
+    marginTop: 10,
+  },
+  modalButton: {
+    marginTop: 20,
   },
 });

@@ -471,6 +471,10 @@ button.danger {
   max-width: 460px;
 }
 
+.profile-password + .profile-password {
+  margin-top: 1.25rem;
+}
+
 .profile-password h3 {
   margin: 0 0 0.35rem;
   font-size: 1.08rem;
@@ -900,4 +904,13 @@ button.glossary-entry .eyebrow {
 button.glossary-entry strong {
   display: block;
   font-size: 1.15rem;
+}
+
+.confirm-dialog p {
+  margin: 0.45rem 0 1.15rem;
+  color: var(--muted);
+}
+
+.confirm-dialog button {
+  width: 100%;
 }

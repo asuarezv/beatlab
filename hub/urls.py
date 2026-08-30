@@ -19,6 +19,7 @@ urlpatterns = [
     path("auth/register/verify/", views.register_verify, name="auth-register-verify"),
     path("auth/logout/", views.logout_view, name="auth-logout"),
     path("auth/password/", views.change_password, name="auth-password"),
+    path("auth/profile/", views.update_profile, name="auth-profile"),
     path("auth/company/", views.select_company, name="auth-company"),
     path("salud/", views.salud, name="salud"),
     path("ingest/beats/", views.ingest_beat, name="ingest-beat"),

@@ -118,6 +118,22 @@ export function fetchOperatorMe(token) {
     .then(readJson);
 }
 
+export function updateOperatorProfile(token, payload) {
+  return fetch(`${hubUrl()}/api/monitor/auth/me/`, {
+    method: "PATCH",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  })
+    .catch(() => {
+      throw contactHubError();
+    })
+    .then(readJson);
+}
+
 export function setOperatorPassword(token, payload) {
   return fetch(`${hubUrl()}/api/monitor/auth/password/`, {
     method: "POST",

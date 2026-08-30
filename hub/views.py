@@ -13,7 +13,7 @@ from django.middleware.csrf import get_token
 from django.utils import timezone
 from django.utils.text import slugify
 from django.views.decorators.csrf import ensure_csrf_cookie
-from django.views.decorators.http import require_GET, require_POST
+from django.views.decorators.http import require_GET, require_http_methods, require_POST
 from rest_framework import status, viewsets
 from rest_framework.decorators import action, api_view, authentication_classes, permission_classes
 from rest_framework.exceptions import MethodNotAllowed, PermissionDenied, ValidationError
@@ -54,9 +54,11 @@ from .validation import (
     PASSWORD_CHANGE_REQUIRED,
     PASSWORD_CREATED,
     PASSWORD_UPDATED,
+    PROFILE_UPDATED,
     USERNAME_ERROR,
     is_valid_username,
     validate_new_password,
+    validate_profile_fields,
 )
 from .quota import (
     assert_can_consume_beat,
@@ -91,6 +93,8 @@ def _json_body(request):
 def user_payload(user):
     return {
         "username": user.username,
+        "first_name": user.first_name or "",
+        "last_name": user.last_name or "",
         "email": user.email or "",
         "display_name": user.get_full_name().strip() or user.username,
         "is_staff": user.is_staff,
@@ -273,7 +277,33 @@ def change_password(request):
     request.user.set_password(new_password)
     request.user.save(update_fields=["password"])
     update_session_auth_hash(request, request.user)
-    return JsonResponse({"ok": True, "detail": "Contraseña actualizada."})
+    return JsonResponse({"ok": True, "detail": PASSWORD_UPDATED})
+
+
+@require_http_methods(["PATCH"])
+def update_profile(request):
+    if not _staff_ok(request.user):
+        return JsonResponse({"detail": "No autorizado"}, status=401)
+    data = _json_body(request)
+    if data is None:
+        return JsonResponse({"detail": "JSON inválido"}, status=400)
+    try:
+        first_name, last_name, email = validate_profile_fields(
+            first_name=data.get("first_name"),
+            last_name=data.get("last_name"),
+            email=data.get("email"),
+            exclude_user_id=request.user.pk,
+        )
+    except ValueError as exc:
+        return JsonResponse({"detail": str(exc)}, status=400)
+    user = request.user
+    user.first_name = first_name
+    user.last_name = last_name
+    user.email = email
+    user.save(update_fields=["first_name", "last_name", "email"])
+    payload = session_payload(request, user)
+    payload["detail"] = PROFILE_UPDATED
+    return JsonResponse(payload)
 
 
 @api_view(["POST"])
@@ -575,11 +605,41 @@ def monitor_login(request):
     return Response(monitor_session_payload(operator))
 
 
-@api_view(["GET"])
+@api_view(["GET", "PATCH"])
 @authentication_classes([OperatorTokenAuthentication])
 @permission_classes([IsOperatorToken])
 def monitor_me(request):
-    return Response(monitor_session_payload(request.auth, with_token=False))
+    operator = request.auth
+    if request.method != "PATCH":
+        return Response(monitor_session_payload(operator, with_token=False))
+    try:
+        first_name, last_name, email = validate_profile_fields(
+            first_name=request.data.get("first_name", operator.first_name),
+            last_name=request.data.get("last_name", operator.last_name),
+            email=request.data.get("email", operator.email),
+            exclude_operator_id=operator.pk,
+        )
+    except ValueError as exc:
+        return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+    operator.first_name = first_name
+    operator.last_name = last_name
+    operator.email = email
+    try:
+        operator.save(update_fields=["first_name", "last_name", "email"])
+    except IntegrityError:
+        return Response(
+            {"detail": OPERATOR_EMAIL_TAKEN},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    user = operator.user
+    if user:
+        user.first_name = first_name
+        user.last_name = last_name
+        user.email = email
+        user.save(update_fields=["first_name", "last_name", "email"])
+    payload = monitor_session_payload(operator, with_token=False)
+    payload["detail"] = PROFILE_UPDATED
+    return Response(payload)
 
 
 @api_view(["POST"])

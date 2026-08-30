@@ -79,6 +79,17 @@ export function changePassword(currentPassword, password, password2) {
   });
 }
 
+export function updateProfile(firstName, lastName, email) {
+  return request("/api/auth/profile/", {
+    method: "PATCH",
+    body: JSON.stringify({
+      first_name: firstName,
+      last_name: lastName,
+      email,
+    }),
+  });
+}
+
 export function selectCompany(companyId) {
   return request("/api/auth/company/", {
     method: "POST",
