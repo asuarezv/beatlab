@@ -17,18 +17,30 @@ const STEPS = [
   },
   {
     title: "El mensaje viaja cifrado",
-    body: "Todos los Beats van cifrados hacia el Hub. El envío queda protegido hasta la central.",
+    body: (
+      <>
+        Todos los <GlossaryTerm termId="beat">Beats</GlossaryTerm> van cifrados
+        hacia el <GlossaryTerm termId="hub">Hub</GlossaryTerm>. El envío queda
+        protegido hasta la central.
+      </>
+    ),
   },
   {
     title: "El Hub recibe y valida",
-    body: "La central reconoce cada Beat, lo clasifica y lo deja listo para tu equipo.",
+    body: (
+      <>
+        La central reconoce cada{" "}
+        <GlossaryTerm termId="beat">Beat</GlossaryTerm>, lo clasifica y lo deja
+        listo para tu equipo.
+      </>
+    ),
   },
   {
     title: "Aviso al celular",
     body: (
       <>
-        El <GlossaryTerm termId="operator">Operator</GlossaryTerm> lo recibe en
-        Monitor, en su teléfono.
+        El <GlossaryTerm termId="operator">Operator</GlossaryTerm> lo recibe en{" "}
+        <GlossaryTerm termId="monitor">Monitor</GlossaryTerm>, en su teléfono.
       </>
     ),
   },
@@ -80,8 +92,9 @@ export default function Landing() {
         <p className="eyebrow">La ruta</p>
         <h2 id="como-funciona-title">¿Cómo funciona?</h2>
         <p className="muted landing-how-lead">
-          Tu <GlossaryTerm termId="hub">Hub</GlossaryTerm> es la central. Recibe
-          Beats de tus <GlossaryTerm termId="system">systems</GlossaryTerm> —
+          Tu <GlossaryTerm termId="hub">Hub</GlossaryTerm> es la central. Recibe{" "}
+          <GlossaryTerm termId="beat">Beats</GlossaryTerm> de tus{" "}
+          <GlossaryTerm termId="system">systems</GlossaryTerm> —
           web, app móvil, API o un job — y los hace llegar al celular.
         </p>
         <div className="how-channels">
