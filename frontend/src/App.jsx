@@ -6,6 +6,7 @@ import Beats from "./pages/Beats.jsx";
 import BeatTypes from "./pages/BeatTypes.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import Consumo from "./pages/Consumo.jsx";
+import Landing from "./pages/Landing.jsx";
 import Login from "./pages/Login.jsx";
 import Operators from "./pages/Operators.jsx";
 import Register from "./pages/Register.jsx";
@@ -32,16 +33,27 @@ export default function App() {
 
   if (session === undefined) {
     return (
-      <div className="wrap">
-        <p className="muted">Cargando…</p>
-      </div>
+      <Routes>
+        <Route index element={<Landing />} />
+        <Route
+          path="*"
+          element={
+            <div className="wrap">
+              <p className="muted">Cargando…</p>
+            </div>
+          }
+        />
+      </Routes>
     );
   }
 
   if (!session) {
     return (
       <Routes>
+        <Route index element={<Landing />} />
         <Route path="registro" element={<Register onLogin={setSession} />} />
+        <Route path="entrar" element={<Login onLogin={setSession} />} />
+        <Route path="login" element={<Navigate to="/entrar" replace />} />
         <Route path="*" element={<Login onLogin={setSession} />} />
       </Routes>
     );
@@ -57,6 +69,8 @@ export default function App() {
         <Route path="tipos" element={<BeatTypes />} />
         <Route path="beats" element={<Beats />} />
         <Route path="login" element={<Navigate to="/" replace />} />
+        <Route path="entrar" element={<Navigate to="/" replace />} />
+        <Route path="registro" element={<Navigate to="/" replace />} />
         <Route path="*" element={<Dashboard />} />
       </Routes>
     </Shell>

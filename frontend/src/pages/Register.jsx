@@ -190,7 +190,7 @@ export default function Register({ onLogin }) {
           {pending ? "Enviando código…" : "Enviar código"}
         </button>
         <p className="auth-switch">
-          ¿Ya tienes Hub? <Link to="/">Entrar</Link>
+          ¿Ya tienes Hub? <Link to="/entrar">Entrar</Link>
         </p>
       </form>
     </div>

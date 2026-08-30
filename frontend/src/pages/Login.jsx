@@ -33,7 +33,9 @@ export default function Login({ onLogin }) {
   return (
     <div className="wrap center">
       <form className="card" onSubmit={handleSubmit}>
-        <p className="eyebrow">BeatLab</p>
+        <p className="eyebrow">
+          <Link to="/">BeatLab</Link>
+        </p>
         <h1>Entrar al Hub</h1>
         <label>
           Usuario
