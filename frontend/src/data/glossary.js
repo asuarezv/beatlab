@@ -32,7 +32,7 @@ export const GLOSSARY_ENTRIES = [
     term: "Hub",
     fullName: "Centro de la empresa",
     definition:
-      "El Hub es el centro que se vende a cada empresa para controlar la salud de sus Systems. Desde ahí se dan de alta Operators, Systems (con JWT) y tipos de Beat; también se validan, persisten y enrutan los Beats de esa empresa. Comercialmente hay un Hub por empresa; técnicamente un solo Hub (API Django + administración React) administra todos. Hub no es el panel del Operator en Monitor.",
+      "El Hub es el centro que se vende a cada empresa para controlar la salud de sus Systems. Desde ahí se dan de alta Operators, Systems (con JWT) y tipos de Beat; también se validan, persisten y enrutan los Beats de esa empresa.",
   },
   {
     id: "monitor",
