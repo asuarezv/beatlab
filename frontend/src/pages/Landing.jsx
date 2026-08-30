@@ -4,7 +4,7 @@ import GlossaryTerm from "../components/GlossaryTerm.jsx";
 export default function Landing() {
   return (
     <main className="landing">
-      <p className="eyebrow">SaaS</p>
+      <p className="eyebrow">Plataforma</p>
       <h1>BeatLab Hub</h1>
       <p className="muted landing-lead">
         Controla la salud de tus{" "}
