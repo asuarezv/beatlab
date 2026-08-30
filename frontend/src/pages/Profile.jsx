@@ -147,96 +147,98 @@ export default function Profile({ session, onSession }) {
     <section>
       <h2>Perfil</h2>
       <p className="hint">Datos de la cuenta con la que entras al Hub.</p>
-      <form className="card profile-password" onSubmit={handleProfileSubmit}>
-        <h3>Datos de la cuenta</h3>
-        <label>
-          Usuario
-          <input
-            name="username"
-            value={user.username || ""}
-            readOnly
-            disabled
-            autoComplete="username"
+      <div className="profile-cards">
+        <form className="card profile-password" onSubmit={handleProfileSubmit}>
+          <h3>Datos de la cuenta</h3>
+          <label>
+            Usuario
+            <input
+              name="username"
+              value={user.username || ""}
+              readOnly
+              disabled
+              autoComplete="username"
+            />
+          </label>
+          <label>
+            Nombre <span className="req">*</span>
+            <input
+              name="first_name"
+              autoComplete="given-name"
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
+              required
+            />
+          </label>
+          <label>
+            Apellidos <span className="req">*</span>
+            <input
+              name="last_name"
+              autoComplete="family-name"
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
+              required
+            />
+          </label>
+          <label>
+            Correo <span className="req">*</span>
+            <input
+              name="email"
+              type="email"
+              autoComplete="email"
+              value={email}
+              className={emailBlurred && emailInvalid ? "invalid" : undefined}
+              onChange={(e) => setEmail(e.target.value)}
+              onBlur={() => setEmailBlurred(true)}
+              required
+            />
+          </label>
+          {profileError ? <p className="error">{profileError}</p> : null}
+          {profileOk ? <p className="ok">{profileOk}</p> : null}
+          <button type="submit" disabled={!profileOkToSave || profilePending}>
+            {profilePending ? "Guardando…" : "Guardar datos"}
+          </button>
+        </form>
+        <form className="card profile-password" onSubmit={handlePasswordSubmit}>
+          <h3>Cambiar contraseña</h3>
+          <PasswordField
+            label="Contraseña actual"
+            name="current_password"
+            value={currentPassword}
+            onChange={(e) => setCurrentPassword(e.target.value)}
+            autoComplete="current-password"
+            visible={showCurrent}
+            onToggle={() => setShowCurrent((value) => !value)}
           />
-        </label>
-        <label>
-          Nombre <span className="req">*</span>
-          <input
-            name="first_name"
-            autoComplete="given-name"
-            value={firstName}
-            onChange={(e) => setFirstName(e.target.value)}
-            required
+          <PasswordField
+            label="Nueva contraseña"
+            name="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete="new-password"
+            visible={showPassword}
+            onToggle={() => setShowPassword((value) => !value)}
+            invalid={passwordsMismatch}
           />
-        </label>
-        <label>
-          Apellidos <span className="req">*</span>
-          <input
-            name="last_name"
-            autoComplete="family-name"
-            value={lastName}
-            onChange={(e) => setLastName(e.target.value)}
-            required
+          <PasswordField
+            label="Confirmar contraseña"
+            name="password2"
+            value={password2}
+            onChange={(e) => setPassword2(e.target.value)}
+            autoComplete="new-password"
+            visible={showPassword2}
+            onToggle={() => setShowPassword2((value) => !value)}
+            invalid={passwordsMismatch}
           />
-        </label>
-        <label>
-          Correo <span className="req">*</span>
-          <input
-            name="email"
-            type="email"
-            autoComplete="email"
-            value={email}
-            className={emailBlurred && emailInvalid ? "invalid" : undefined}
-            onChange={(e) => setEmail(e.target.value)}
-            onBlur={() => setEmailBlurred(true)}
-            required
-          />
-        </label>
-        {profileError ? <p className="error">{profileError}</p> : null}
-        {profileOk ? <p className="ok">{profileOk}</p> : null}
-        <button type="submit" disabled={!profileOkToSave || profilePending}>
-          {profilePending ? "Guardando…" : "Guardar datos"}
-        </button>
-      </form>
-      <form className="card profile-password" onSubmit={handlePasswordSubmit}>
-        <h3>Cambiar contraseña</h3>
-        <PasswordField
-          label="Contraseña actual"
-          name="current_password"
-          value={currentPassword}
-          onChange={(e) => setCurrentPassword(e.target.value)}
-          autoComplete="current-password"
-          visible={showCurrent}
-          onToggle={() => setShowCurrent((value) => !value)}
-        />
-        <PasswordField
-          label="Nueva contraseña"
-          name="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          autoComplete="new-password"
-          visible={showPassword}
-          onToggle={() => setShowPassword((value) => !value)}
-          invalid={passwordsMismatch}
-        />
-        <PasswordField
-          label="Confirmar contraseña"
-          name="password2"
-          value={password2}
-          onChange={(e) => setPassword2(e.target.value)}
-          autoComplete="new-password"
-          visible={showPassword2}
-          onToggle={() => setShowPassword2((value) => !value)}
-          invalid={passwordsMismatch}
-        />
-        {passwordsMismatch ? (
-          <p className="error">{PASSWORD_MISMATCH_ERROR}</p>
-        ) : null}
-        {passError ? <p className="error">{passError}</p> : null}
-        <button type="submit" disabled={!formOk || passPending}>
-          {passPending ? "Guardando…" : "Actualizar contraseña"}
-        </button>
-      </form>
+          {passwordsMismatch ? (
+            <p className="error">{PASSWORD_MISMATCH_ERROR}</p>
+          ) : null}
+          {passError ? <p className="error">{passError}</p> : null}
+          <button type="submit" disabled={!formOk || passPending}>
+            {passPending ? "Guardando…" : "Actualizar contraseña"}
+          </button>
+        </form>
+      </div>
       {passwordChanged
         ? createPortal(
             <div className="glossary-backdrop">

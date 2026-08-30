@@ -467,12 +467,15 @@ button.danger {
   margin: 0;
 }
 
-.profile-password {
-  max-width: 460px;
+.profile-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+  gap: 1.25rem;
+  align-items: start;
 }
 
-.profile-password + .profile-password {
-  margin-top: 1.25rem;
+.profile-password {
+  min-width: 0;
 }
 
 .profile-password h3 {
