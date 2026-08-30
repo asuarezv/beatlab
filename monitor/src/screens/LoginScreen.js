@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import {
+  Image,
   KeyboardAvoidingView,
   Linking,
   Platform,
@@ -127,6 +128,12 @@ export default function LoginScreen({ onLogin }) {
         contentContainerStyle={styles.scroll}
         keyboardShouldPersistTaps="handled"
       >
+        <Image
+          source={require("../../assets/nynusoft-logo.png")}
+          style={styles.logo}
+          resizeMode="contain"
+          accessibilityLabel="NynuSoft"
+        />
         <Text style={styles.eyebrow}>BeatLab</Text>
         <Text style={styles.title}>Monitor</Text>
         {step === "email" ? (
@@ -238,6 +245,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 72,
     paddingBottom: 32,
+  },
+  logo: {
+    width: 174,
+    height: 36,
+    marginBottom: 28,
   },
   eyebrow: {
     color: colors.accent,
