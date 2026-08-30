@@ -1,13 +1,18 @@
+import uuid
+
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.validators import validate_email
 from django.utils.text import slugify
 from rest_framework import serializers
 
 from .models import Beat, BeatType, Company, Operator, System
 from .validation import (
     COMPANY_NAME_ERROR,
-    USERNAME_ERROR,
+    PERSON_NAME_ERROR,
+    email_already_used,
     is_valid_company_name,
-    is_valid_username,
+    normalize_person_name,
 )
 
 User = get_user_model()
@@ -39,31 +44,72 @@ class CompanySerializer(serializers.ModelSerializer):
 
 
 class OperatorSerializer(serializers.ModelSerializer):
-    username = serializers.CharField(write_only=True, trim_whitespace=False)
-    password = serializers.CharField(write_only=True, min_length=8)
-    display_name = serializers.CharField(source="user.username", read_only=True)
+    display_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Operator
-        fields = ("id", "username", "password", "display_name", "created_at")
-        read_only_fields = ("id", "display_name", "created_at")
+        fields = (
+            "id",
+            "first_name",
+            "last_name",
+            "email",
+            "display_name",
+            "last_login_at",
+            "created_at",
+        )
+        read_only_fields = ("id", "display_name", "last_login_at", "created_at")
 
-    def validate_username(self, value):
-        username = value or ""
-        if not username:
-            raise serializers.ValidationError("El usuario es obligatorio.")
-        if not is_valid_username(username):
-            raise serializers.ValidationError(USERNAME_ERROR)
-        return username
+    def get_display_name(self, obj):
+        return obj.display_name()
+
+    def validate_first_name(self, value):
+        name = normalize_person_name(value)
+        if not name:
+            raise serializers.ValidationError(PERSON_NAME_ERROR)
+        return name
+
+    def validate_last_name(self, value):
+        name = normalize_person_name(value)
+        if not name:
+            raise serializers.ValidationError(PERSON_NAME_ERROR)
+        return name
+
+    def validate_email(self, value):
+        email = (value or "").strip().lower()
+        if not email:
+            raise serializers.ValidationError("El correo es obligatorio.")
+        try:
+            validate_email(email)
+        except DjangoValidationError:
+            raise serializers.ValidationError("El correo no es válido.") from None
+        exclude_id = self.instance.pk if self.instance else None
+        if email_already_used(email, exclude_operator_id=exclude_id):
+            raise serializers.ValidationError("Ese correo ya está en uso.")
+        return email
 
     def create(self, validated_data):
-        username = validated_data.pop("username")
-        password = validated_data.pop("password")
         company = self.context["company"]
-        if User.objects.filter(username__iexact=username).exists():
-            raise serializers.ValidationError({"username": "Ese usuario ya existe."})
-        user = User.objects.create_user(username=username, password=password)
-        return Operator.objects.create(company=company, user=user)
+        user = User(
+            username=f"op{uuid.uuid4().hex[:20]}",
+            email=validated_data["email"],
+            first_name=validated_data["first_name"],
+            last_name=validated_data["last_name"],
+        )
+        user.set_unusable_password()
+        user.save()
+        return Operator.objects.create(company=company, user=user, **validated_data)
+
+    def update(self, instance, validated_data):
+        instance.first_name = validated_data.get("first_name", instance.first_name)
+        instance.last_name = validated_data.get("last_name", instance.last_name)
+        instance.email = validated_data.get("email", instance.email)
+        instance.save(update_fields=["first_name", "last_name", "email"])
+        user = instance.user
+        user.first_name = instance.first_name
+        user.last_name = instance.last_name
+        user.email = instance.email
+        user.save(update_fields=["first_name", "last_name", "email"])
+        return instance
 
 
 class BeatTypeSerializer(serializers.ModelSerializer):

@@ -95,10 +95,29 @@ class Operator(models.Model):
         on_delete=models.CASCADE,
         related_name="operator_profiles",
     )
+    first_name = models.CharField(max_length=80)
+    last_name = models.CharField(max_length=80)
+    email = models.EmailField(unique=True)
+    last_login_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         unique_together = ("company", "user")
+        ordering = ["last_name", "first_name", "email"]
+
+    def display_name(self) -> str:
+        full = f"{self.first_name} {self.last_name}".strip()
+        return full or self.email
+
+
+class OperatorOtpChallenge(models.Model):
+    email = models.EmailField(unique=True)
+    code_hash = models.CharField(max_length=64)
+    expires_at = models.DateTimeField()
+    attempts = models.PositiveSmallIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
         ordering = ["-created_at"]
 
 

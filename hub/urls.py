@@ -21,7 +21,8 @@ urlpatterns = [
     path("auth/company/", views.select_company, name="auth-company"),
     path("salud/", views.salud, name="salud"),
     path("ingest/beats/", views.ingest_beat, name="ingest-beat"),
-    path("monitor/auth/login/", views.monitor_login, name="monitor-login"),
+    path("monitor/auth/request-otp/", views.monitor_request_otp, name="monitor-request-otp"),
+    path("monitor/auth/verify-otp/", views.monitor_verify_otp, name="monitor-verify-otp"),
     path("monitor/beats/", views.monitor_beats, name="monitor-beats"),
     path("", include(router.urls)),
 ]

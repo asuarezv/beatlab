@@ -10,11 +10,12 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import validate_email
 from django.utils import timezone
 
-from .emails import send_register_otp
-from .models import SignupChallenge
+from .emails import send_monitor_otp, send_register_otp
+from .models import Operator, OperatorOtpChallenge, SignupChallenge
 from .validation import (
     COMPANY_NAME_ERROR,
     USERNAME_ERROR,
+    email_already_used,
     is_valid_company_name,
     is_valid_username,
 )
@@ -24,9 +25,13 @@ logger = logging.getLogger(__name__)
 OTP_LENGTH = 6
 
 
-def hash_otp(otp: str) -> str:
-    raw = f"{settings.SECRET_KEY}:register-otp:{otp.strip()}"
+def hash_otp(otp: str, purpose: str = "register-otp") -> str:
+    raw = f"{settings.SECRET_KEY}:{purpose}:{otp.strip()}"
     return hashlib.sha256(raw.encode()).hexdigest()
+
+
+def _new_otp() -> str:
+    return "".join(secrets.choice("0123456789") for _ in range(OTP_LENGTH))
 
 
 def _ttl() -> int:
@@ -68,10 +73,10 @@ def issue_signup_otp(*, company_name, username, email, password) -> dict:
     User = get_user_model()
     if User.objects.filter(username__iexact=username).exists():
         raise ValueError("Ese usuario ya está en uso.")
-    if User.objects.filter(email__iexact=email).exists():
+    if email_already_used(email):
         raise ValueError("Ese correo ya está en uso.")
 
-    otp = "".join(secrets.choice("0123456789") for _ in range(OTP_LENGTH))
+    otp = _new_otp()
     ttl = _ttl()
     SignupChallenge.objects.filter(email=email).delete()
     SignupChallenge.objects.create(
@@ -112,3 +117,72 @@ def consume_signup_otp(*, email, otp):
         challenge.save(update_fields=["attempts"])
         raise ValueError("El código no es válido.")
     return challenge
+
+
+def _monitor_generic(email: str, ttl: int) -> dict:
+    return {
+        "email": email,
+        "expires_in": ttl,
+        "detail": "Si el correo está dado de alta, te enviamos un código.",
+    }
+
+
+def issue_monitor_otp(*, email) -> dict:
+    email = (email or "").strip().lower()
+    ttl = _ttl()
+    if not email:
+        raise ValueError("El correo es obligatorio.")
+    try:
+        validate_email(email)
+    except DjangoValidationError:
+        raise ValueError("El correo no es válido.") from None
+
+    operator = (
+        Operator.objects.filter(email__iexact=email)
+        .select_related("user")
+        .first()
+    )
+    if not operator or not operator.user.is_active:
+        return _monitor_generic(email, ttl)
+
+    otp = _new_otp()
+    OperatorOtpChallenge.objects.filter(email=email).delete()
+    OperatorOtpChallenge.objects.create(
+        email=email,
+        code_hash=hash_otp(otp, "monitor-otp"),
+        expires_at=timezone.now() + timedelta(seconds=ttl),
+    )
+    try:
+        send_monitor_otp(email, operator.display_name(), otp, ttl)
+    except Exception:
+        OperatorOtpChallenge.objects.filter(email=email).delete()
+        logger.exception("No se pudo enviar el OTP de Monitor a %s", email)
+        raise ValueError("No se pudo enviar el código. Inténtalo de nuevo.") from None
+    return _monitor_generic(email, ttl)
+
+
+def consume_monitor_otp(*, email, otp) -> Operator:
+    email = (email or "").strip().lower()
+    otp = (otp or "").strip()
+    challenge = OperatorOtpChallenge.objects.filter(email=email).first()
+    if not challenge:
+        raise ValueError("Solicita un código nuevo.")
+    if timezone.now() >= challenge.expires_at:
+        challenge.delete()
+        raise ValueError("El código caducó. Solicita uno nuevo.")
+    if challenge.attempts >= _max_attempts():
+        challenge.delete()
+        raise ValueError("Demasiados intentos. Solicita un código nuevo.")
+    if not secrets.compare_digest(challenge.code_hash, hash_otp(otp, "monitor-otp")):
+        challenge.attempts += 1
+        challenge.save(update_fields=["attempts"])
+        raise ValueError("El código no es válido.")
+    operator = (
+        Operator.objects.filter(email__iexact=email)
+        .select_related("user", "company")
+        .first()
+    )
+    challenge.delete()
+    if not operator or not operator.user.is_active:
+        raise ValueError("Solicita un código nuevo.")
+    return operator

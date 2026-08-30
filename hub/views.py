@@ -4,6 +4,7 @@ from django.contrib.auth import authenticate, get_user_model, login, logout
 from django.db import transaction
 from django.http import JsonResponse
 from django.middleware.csrf import get_token
+from django.utils import timezone
 from django.utils.text import slugify
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_POST
@@ -19,10 +20,16 @@ from .authentication import (
     OperatorTokenAuthentication,
     SystemJWTAuthentication,
 )
-from .models import Beat, BeatType, Company, Operator, System
+from .models import Beat, BeatType, Company, Operator, OperatorOtpChallenge, System
 from .notify import beat_payload, notify_company_beat
 from .tokens import issue_operator_jwt, issue_system_jwt
-from .otp import consume_signup_otp, issue_signup_otp, validate_signup_fields
+from .otp import (
+    consume_monitor_otp,
+    consume_signup_otp,
+    issue_monitor_otp,
+    issue_signup_otp,
+    validate_signup_fields,
+)
 from .validation import USERNAME_ERROR, is_valid_username
 from .quota import (
     assert_can_consume_beat,
@@ -261,11 +268,20 @@ class CompanyViewSet(viewsets.ModelViewSet):
 
 class OperatorViewSet(TenantViewSet):
     serializer_class = OperatorSerializer
+    http_method_names = ["get", "post", "put", "patch", "delete", "head", "options"]
 
     def get_queryset(self):
         if not self.company:
             return Operator.objects.none()
         return Operator.objects.filter(company=self.company).select_related("user")
+
+    def perform_destroy(self, instance):
+        email = instance.email
+        user = instance.user
+        instance.delete()
+        OperatorOtpChallenge.objects.filter(email__iexact=email).delete()
+        if user and not user.is_staff and not user.is_superuser:
+            user.delete()
 
 
 class BeatTypeViewSet(TenantViewSet):
@@ -365,44 +381,36 @@ def ingest_beat(request):
 @api_view(["POST"])
 @authentication_classes([])
 @permission_classes([AllowAny])
-def monitor_login(request):
-    username = request.data.get("username") or ""
-    password = (request.data.get("password") or "").strip()
-    if not username or not password:
-        return Response(
-            {"detail": "Usuario y contraseña son obligatorios."},
-            status=status.HTTP_400_BAD_REQUEST,
+def monitor_request_otp(request):
+    try:
+        result = issue_monitor_otp(email=request.data.get("email"))
+    except ValueError as exc:
+        return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+    return Response(result)
+
+
+@api_view(["POST"])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def monitor_verify_otp(request):
+    try:
+        operator = consume_monitor_otp(
+            email=request.data.get("email"),
+            otp=request.data.get("otp"),
         )
-    if not is_valid_username(username):
-        return Response({"detail": USERNAME_ERROR}, status=status.HTTP_400_BAD_REQUEST)
-    stored = User.objects.filter(username__iexact=username).first()
-    user = authenticate(
-        request,
-        username=stored.username if stored else username,
-        password=password,
-    )
-    if user is None or not user.is_active:
-        return Response(
-            {"detail": "Usuario o contraseña incorrectos"},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-    operator = (
-        Operator.objects.filter(user=user)
-        .select_related("company")
-        .order_by("id")
-        .first()
-    )
-    if not operator:
-        return Response(
-            {"detail": "No hay Operator con ese usuario."},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
+    except ValueError as exc:
+        return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+    operator.last_login_at = timezone.now()
+    operator.save(update_fields=["last_login_at"])
     return Response(
         {
             "token": issue_operator_jwt(operator),
             "operator": {
                 "id": operator.id,
-                "display_name": user.get_full_name().strip() or user.username,
+                "display_name": operator.display_name(),
+                "first_name": operator.first_name,
+                "last_name": operator.last_name,
+                "email": operator.email,
             },
             "company": {
                 "id": operator.company_id,

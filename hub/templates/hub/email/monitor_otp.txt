@@ -1,0 +1,12 @@
+{% autoescape off %}Hola {{ name }},
+
+Tu código para entrar a BeatLab Monitor es:
+
+  {{ otp }}
+
+Caduca en {{ minutes }} minutos. No lo compartas con nadie.
+Si no solicitaste este acceso, ignora este correo.
+
+BeatLab Monitor · NynuSoft
+{{ site_url }}
+{% endautoescape %}

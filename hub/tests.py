@@ -1,4 +1,7 @@
+from unittest.mock import patch
+
 from django.contrib.auth import get_user_model
+from django.core import mail
 from rest_framework.test import APITestCase
 
 from .models import Beat, BeatPackage, BeatType, Company, Operator, System
@@ -32,9 +35,18 @@ class IngestAndMonitorTests(APITestCase):
         ensure_membership(self.staff, self.company)
         self.op_user = User.objects.create_user(
             username="opdemo",
+            email="op@labbe.test",
             password="password12",
+            first_name="Ana",
+            last_name="Pérez",
         )
-        self.operator = Operator.objects.create(company=self.company, user=self.op_user)
+        self.operator = Operator.objects.create(
+            company=self.company,
+            user=self.op_user,
+            first_name="Ana",
+            last_name="Pérez",
+            email="op@labbe.test",
+        )
 
     def _ingest(self, token=None, body=None, **extra):
         auth = token if token is not None else self.token
@@ -125,28 +137,53 @@ class IngestAndMonitorTests(APITestCase):
         self.assertEqual(second.status_code, 409)
         self.assertIn("Beats", second.data["detail"])
 
-    def test_monitor_login_and_list(self):
+    def _hub_session(self, user=None, company=None):
+        self.client.force_login(user or self.staff)
+        session = self.client.session
+        session["company_id"] = (company or self.company).id
+        session.save()
+
+    def test_monitor_otp_login_and_list(self):
         self._ingest()
-        denied = self.client.post(
-            "/api/monitor/auth/login/",
-            {"username": "hubadmin", "password": "password12"},
+        unknown = self.client.post(
+            "/api/monitor/auth/request-otp/",
+            {"email": "nadie@labbe.test"},
             format="json",
         )
-        self.assertEqual(denied.status_code, 400)
-        self.assertEqual(denied.data["detail"], "No hay Operator con ese usuario.")
+        self.assertEqual(unknown.status_code, 200)
+        self.assertEqual(len(mail.outbox), 0)
+        staff_email = self.client.post(
+            "/api/monitor/auth/request-otp/",
+            {"email": "hubadmin@labbe.test"},
+            format="json",
+        )
+        self.assertEqual(staff_email.status_code, 200)
+        with patch("hub.otp.secrets.choice", return_value="4"):
+            asked = self.client.post(
+                "/api/monitor/auth/request-otp/",
+                {"email": "op@labbe.test"},
+                format="json",
+            )
+        self.assertEqual(asked.status_code, 200)
+        self.assertEqual(asked.data["detail"], unknown.data["detail"])
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].subject, "Tu código Monitor")
+        self.assertIsNone(self.operator.last_login_at)
         wrong = self.client.post(
-            "/api/monitor/auth/login/",
-            {"username": "opdemo", "password": "noesesta"},
+            "/api/monitor/auth/verify-otp/",
+            {"email": "op@labbe.test", "otp": "000000"},
             format="json",
         )
         self.assertEqual(wrong.status_code, 400)
-        self.assertEqual(wrong.data["detail"], "Usuario o contraseña incorrectos")
         login = self.client.post(
-            "/api/monitor/auth/login/",
-            {"username": "opdemo", "password": "password12"},
+            "/api/monitor/auth/verify-otp/",
+            {"email": "op@labbe.test", "otp": "444444"},
             format="json",
         )
         self.assertEqual(login.status_code, 200)
+        self.assertEqual(login.data["operator"]["display_name"], "Ana Pérez")
+        self.operator.refresh_from_db()
+        self.assertIsNotNone(self.operator.last_login_at)
         token = login.data["token"]
         beats = self.client.get(
             "/api/monitor/beats/",
@@ -155,6 +192,71 @@ class IngestAndMonitorTests(APITestCase):
         self.assertEqual(beats.status_code, 200)
         self.assertEqual(len(beats.data), 1)
         self.assertEqual(beats.data[0]["title"], "Cola recuperada")
+        gone = self.client.post(
+            "/api/monitor/auth/login/",
+            {"username": "opdemo", "password": "password12"},
+            format="json",
+        )
+        self.assertEqual(gone.status_code, 404)
+
+    def test_hub_operator_crud_is_tenant_scoped(self):
+        other = Company.objects.create(name="Otra", slug="otra")
+        grant_demo(other)
+        other_staff = User.objects.create_user(
+            username="otroadmin",
+            password="password12",
+            is_staff=True,
+        )
+        ensure_membership(other_staff, other)
+        self._hub_session()
+        created = self.client.post(
+            "/api/operators/",
+            {
+                "first_name": "Luis",
+                "last_name": "García",
+                "email": "luis@labbe.test",
+            },
+            format="json",
+        )
+        self.assertEqual(created.status_code, 201)
+        operator_id = created.data["id"]
+        self.assertEqual(created.data["email"], "luis@labbe.test")
+        self.assertIsNone(created.data["last_login_at"])
+        listed = self.client.get("/api/operators/")
+        self.assertEqual(listed.status_code, 200)
+        emails = {item["email"] for item in listed.data}
+        self.assertEqual(emails, {"op@labbe.test", "luis@labbe.test"})
+        patched = self.client.patch(
+            f"/api/operators/{operator_id}/",
+            {"first_name": "Luis Miguel"},
+            format="json",
+        )
+        self.assertEqual(patched.status_code, 200)
+        self.assertEqual(patched.data["first_name"], "Luis Miguel")
+        self.client.logout()
+        self._hub_session(other_staff, other)
+        foreign_list = self.client.get("/api/operators/")
+        self.assertEqual(foreign_list.status_code, 200)
+        self.assertEqual(foreign_list.data, [])
+        stolen = self.client.patch(
+            f"/api/operators/{operator_id}/",
+            {"first_name": "Hack"},
+            format="json",
+        )
+        self.assertEqual(stolen.status_code, 404)
+        self.client.logout()
+        self._hub_session()
+        deleted = self.client.delete(f"/api/operators/{operator_id}/")
+        self.assertEqual(deleted.status_code, 204)
+        self.assertFalse(Operator.objects.filter(pk=operator_id).exists())
+        self.assertFalse(User.objects.filter(email="luis@labbe.test").exists())
+        asked = self.client.post(
+            "/api/monitor/auth/request-otp/",
+            {"email": "luis@labbe.test"},
+            format="json",
+        )
+        self.assertEqual(asked.status_code, 200)
+        self.assertEqual(len(mail.outbox), 0)
 
     async def test_monitor_websocket_rejects_anonymous(self):
         from channels.testing import WebsocketCommunicator
