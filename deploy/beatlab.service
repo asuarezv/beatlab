@@ -1,0 +1,23 @@
+[Unit]
+Description=BeatLab Hub (Gunicorn)
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=beatlab
+Group=beatlab
+WorkingDirectory=/opt/beatlab
+EnvironmentFile=/opt/beatlab/.env
+Environment=DJANGO_SETTINGS_MODULE=config.settings
+ExecStart=/opt/beatlab/venv/bin/gunicorn \
+    --bind 127.0.0.1:8009 \
+    --workers 2 \
+    --timeout 60 \
+    --access-logfile - \
+    --error-logfile - \
+    config.wsgi:application
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

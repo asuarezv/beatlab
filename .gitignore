@@ -13,6 +13,9 @@ node_modules/
 dist/
 build/
 .expo/
+staticfiles/
+db.sqlite3
+.bootstrap-admin
 
 .DS_Store
 Thumbs.db
