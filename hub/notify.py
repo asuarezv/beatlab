@@ -3,6 +3,7 @@ import logging
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 
+from .assignment import operators_for_beat
 from .models import Beat
 
 logger = logging.getLogger(__name__)
@@ -21,8 +22,12 @@ def beat_payload(beat: Beat) -> dict:
     }
 
 
-def company_group(company_id: int) -> str:
-    return f"company_{company_id}"
+def company_admin_group(company_id: int) -> str:
+    return f"company_{company_id}_admin"
+
+
+def operator_group(operator_id: int) -> str:
+    return f"operator_{operator_id}"
 
 
 def notify_company_beat(beat: Beat) -> None:
@@ -30,9 +35,12 @@ def notify_company_beat(beat: Beat) -> None:
         layer = get_channel_layer()
         if layer is None:
             return
+        payload = {"type": "beat.created", "beat": beat_payload(beat)}
         async_to_sync(layer.group_send)(
-            company_group(beat.company_id),
-            {"type": "beat.created", "beat": beat_payload(beat)},
+            company_admin_group(beat.company_id),
+            payload,
         )
+        for operator_id in operators_for_beat(beat).values_list("id", flat=True):
+            async_to_sync(layer.group_send)(operator_group(operator_id), payload)
     except Exception:
         logger.exception("No se pudo notificar el Beat %s", beat.pk)

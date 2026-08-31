@@ -347,6 +347,49 @@ nav button {
   flex: 1 1 140px;
 }
 
+.assignment {
+  margin: 0 0 1rem;
+  padding: 0.85rem 1rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.assignment legend {
+  padding: 0 0.35rem;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.assignment .hint {
+  margin-bottom: 0.7rem;
+}
+
+.assignment-options {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.assignment label {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  color: var(--text);
+  cursor: pointer;
+  line-height: 1.4;
+}
+
+.assignment input[type="checkbox"] {
+  width: auto;
+  flex: 0 0 auto;
+  margin-top: 0.15rem;
+  accent-color: var(--accent);
+}
+
+.assignment label.is-disabled {
+  color: var(--muted);
+  cursor: default;
+}
+
 .panel {
   margin: 0 0 2rem;
 }

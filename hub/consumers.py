@@ -3,8 +3,8 @@ from urllib.parse import parse_qs
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 
-from .notify import company_group
-from .tokens import verify_monitor_token
+from .notify import company_admin_group, operator_group
+from .tokens import MONITOR_ROLE_ADMIN, verify_monitor_token
 
 
 class MonitorConsumer(AsyncJsonWebsocketConsumer):
@@ -15,7 +15,10 @@ class MonitorConsumer(AsyncJsonWebsocketConsumer):
         if actor is None:
             await self.close(code=4401)
             return
-        self.group_name = company_group(actor.company_id)
+        if actor.role == MONITOR_ROLE_ADMIN or actor.operator is None:
+            self.group_name = company_admin_group(actor.company_id)
+        else:
+            self.group_name = operator_group(actor.operator.id)
         await self.channel_layer.group_add(self.group_name, self.channel_name)
         await self.accept()
         await self.send_json({"type": "ready"})

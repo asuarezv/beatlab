@@ -12,6 +12,7 @@ from django.core.validators import validate_email
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
+from .assignment import apply_assignment
 from .emails import (
     operator_invite_url,
     operator_recover_url,
@@ -302,7 +303,14 @@ def read_activate_grant(grant: str) -> dict:
 
 
 def issue_operator_invite_otp(
-    *, company, first_name, last_name, email, inviter_name=""
+    *,
+    company,
+    first_name,
+    last_name,
+    email,
+    inviter_name="",
+    receive_all_beat_types=False,
+    beat_types=None,
 ) -> dict:
     first_name = normalize_person_name(first_name)
     last_name = normalize_person_name(last_name)
@@ -334,6 +342,12 @@ def issue_operator_invite_otp(
         token=token,
         code_hash=hash_otp(otp, INVITE_OTP_PURPOSE),
         expires_at=timezone.now() + timedelta(seconds=ttl),
+        receive_all_beat_types=bool(receive_all_beat_types),
+    )
+    apply_assignment(
+        challenge,
+        receive_all=receive_all_beat_types,
+        beat_types=beat_types or [],
     )
     invite_url = operator_invite_url(challenge.token)
     try:
@@ -479,6 +493,11 @@ def _create_operator_from_invite(challenge, password: str) -> Operator:
     )
     operator.set_password(password)
     operator.save(update_fields=["password_hash"])
+    apply_assignment(
+        operator,
+        receive_all=challenge.receive_all_beat_types,
+        beat_types=list(challenge.assigned_beat_types.all()),
+    )
     return operator
 
 

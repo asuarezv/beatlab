@@ -130,6 +130,13 @@ export function listPendingOperatorInvites() {
   return request("/api/operators/pending/");
 }
 
+export function updatePendingOperatorInvite(id, payload) {
+  return request(`/api/operators/pending/${id}/`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
 export function fetchOperatorInvite(token) {
   const query = new URLSearchParams({ token }).toString();
   return request(`/api/public/operator/invite/?${query}`);

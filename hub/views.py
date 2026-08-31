@@ -38,6 +38,14 @@ from .models import (
     OperatorOtpChallenge,
     System,
 )
+from .assignment import (
+    AssignmentError,
+    apply_assignment,
+    assignment_payload,
+    beats_visible_to_actor,
+    parse_receive_all,
+    resolve_company_beat_types,
+)
 from .notify import beat_payload, notify_company_beat
 from .tokens import issue_monitor_jwt, issue_system_jwt
 from .otp import (
@@ -67,8 +75,10 @@ from .validation import (
     PASSWORD_CHANGE_REQUIRED,
     PASSWORD_CREATED,
     PASSWORD_UPDATED,
+    PERSON_NAME_ERROR,
     PROFILE_UPDATED,
     assert_email_available,
+    normalize_person_name,
     validate_new_password,
     validate_profile_fields,
 )
@@ -427,7 +437,11 @@ class OperatorViewSet(TenantViewSet):
     def get_queryset(self):
         if not self.company:
             return Operator.objects.none()
-        return Operator.objects.filter(company=self.company).select_related("user")
+        return (
+            Operator.objects.filter(company=self.company)
+            .select_related("user")
+            .prefetch_related("assigned_beat_types")
+        )
 
     def create(self, request, *args, **kwargs):
         raise MethodNotAllowed("POST")
@@ -455,14 +469,21 @@ class OperatorViewSet(TenantViewSet):
             f"{inviter.first_name} {inviter.last_name}".strip() or inviter.username
         )
         try:
+            beat_types = resolve_company_beat_types(
+                self.company, request.data.get("beat_type_ids")
+            )
             result = issue_operator_invite_otp(
                 company=self.company,
                 first_name=request.data.get("first_name"),
                 last_name=request.data.get("last_name"),
                 email=request.data.get("email"),
                 inviter_name=inviter_name,
+                receive_all_beat_types=parse_receive_all(
+                    request.data.get("receive_all_beat_types")
+                ),
+                beat_types=beat_types,
             )
-        except ValueError as exc:
+        except (AssignmentError, ValueError) as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(result)
 
@@ -473,20 +494,91 @@ class OperatorViewSet(TenantViewSet):
                 {"detail": "No hay empresa activa."},
                 status=status.HTTP_404_NOT_FOUND,
             )
-        rows = OperatorInviteChallenge.objects.filter(
-            company=self.company
-        ).order_by("-created_at")
+        rows = (
+            OperatorInviteChallenge.objects.filter(company=self.company)
+            .prefetch_related("assigned_beat_types")
+            .order_by("-created_at")
+        )
         return Response(
             [
                 {
+                    "id": item.id,
                     "email": item.email,
                     "first_name": item.first_name,
                     "last_name": item.last_name,
                     "created_at": item.created_at,
                     "expires_at": item.expires_at,
+                    **assignment_payload(item),
                 }
                 for item in rows
             ]
+        )
+
+    @action(
+        detail=False,
+        methods=["patch"],
+        url_path=r"pending/(?P<invite_id>[0-9]+)",
+    )
+    def update_pending(self, request, invite_id=None):
+        if not self.company:
+            return Response(
+                {"detail": "No hay empresa activa."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        challenge = (
+            OperatorInviteChallenge.objects.filter(
+                pk=invite_id, company=self.company
+            )
+            .prefetch_related("assigned_beat_types")
+            .first()
+        )
+        if not challenge:
+            return Response(
+                {"detail": "Invitación no encontrada."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        first_name = request.data.get("first_name", challenge.first_name)
+        last_name = request.data.get("last_name", challenge.last_name)
+        first_name = normalize_person_name(first_name)
+        last_name = normalize_person_name(last_name)
+        if not first_name or not last_name:
+            return Response(
+                {"detail": PERSON_NAME_ERROR},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            if "beat_type_ids" in request.data or "receive_all_beat_types" in request.data:
+                beat_types = (
+                    resolve_company_beat_types(
+                        self.company, request.data.get("beat_type_ids")
+                    )
+                    if "beat_type_ids" in request.data
+                    else list(challenge.assigned_beat_types.all())
+                )
+                receive_all = (
+                    parse_receive_all(request.data.get("receive_all_beat_types"))
+                    if "receive_all_beat_types" in request.data
+                    else challenge.receive_all_beat_types
+                )
+                apply_assignment(
+                    challenge, receive_all=receive_all, beat_types=beat_types
+                )
+        except AssignmentError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        challenge.first_name = first_name
+        challenge.last_name = last_name
+        challenge.save(update_fields=["first_name", "last_name"])
+        challenge.refresh_from_db()
+        return Response(
+            {
+                "id": challenge.id,
+                "email": challenge.email,
+                "first_name": challenge.first_name,
+                "last_name": challenge.last_name,
+                "created_at": challenge.created_at,
+                "expires_at": challenge.expires_at,
+                **assignment_payload(challenge),
+            }
         )
 
 
@@ -838,10 +930,7 @@ def monitor_password(request):
 @permission_classes([IsOperatorToken])
 def monitor_beats(request):
     actor = request.auth
-    beats = (
-        Beat.objects.filter(company=actor.company)
-        .select_related("system", "beat_type")[:100]
-    )
+    beats = beats_visible_to_actor(actor)[:100]
     return Response([beat_payload(beat) for beat in beats])
 
 

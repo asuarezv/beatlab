@@ -101,6 +101,12 @@ class Operator(models.Model):
     email = models.EmailField(unique=True)
     password_hash = models.CharField(max_length=256, blank=True, null=True)
     last_login_at = models.DateTimeField(null=True, blank=True)
+    receive_all_beat_types = models.BooleanField(default=False)
+    assigned_beat_types = models.ManyToManyField(
+        "BeatType",
+        blank=True,
+        related_name="operators",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -148,6 +154,12 @@ class OperatorInviteChallenge(models.Model):
     code_hash = models.CharField(max_length=64)
     expires_at = models.DateTimeField()
     attempts = models.PositiveSmallIntegerField(default=0)
+    receive_all_beat_types = models.BooleanField(default=False)
+    assigned_beat_types = models.ManyToManyField(
+        "BeatType",
+        blank=True,
+        related_name="operator_invites",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

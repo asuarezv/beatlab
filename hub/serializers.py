@@ -6,6 +6,7 @@ from django.core.validators import validate_email
 from django.utils.text import slugify
 from rest_framework import serializers
 
+from .assignment import AssignmentError, apply_assignment, resolve_company_beat_types
 from .models import Beat, BeatType, Company, Operator, System
 from .validation import (
     COMPANY_NAME_ERROR,
@@ -46,6 +47,10 @@ class CompanySerializer(serializers.ModelSerializer):
 
 class OperatorSerializer(serializers.ModelSerializer):
     display_name = serializers.SerializerMethodField()
+    beat_type_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=False,
+    )
 
     class Meta:
         model = Operator
@@ -56,6 +61,8 @@ class OperatorSerializer(serializers.ModelSerializer):
             "email",
             "display_name",
             "last_login_at",
+            "receive_all_beat_types",
+            "beat_type_ids",
             "created_at",
         )
         read_only_fields = ("id", "display_name", "last_login_at", "created_at")
@@ -93,7 +100,27 @@ class OperatorSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Ese correo ya está en uso.")
         return email
 
+    def validate(self, attrs):
+        company = self.context["company"]
+        if "beat_type_ids" in attrs:
+            try:
+                attrs["_beat_types"] = resolve_company_beat_types(
+                    company, attrs.pop("beat_type_ids")
+                )
+            except AssignmentError as exc:
+                raise serializers.ValidationError({"beat_type_ids": str(exc)}) from None
+        return attrs
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data["beat_type_ids"] = list(
+            instance.assigned_beat_types.values_list("id", flat=True)
+        )
+        return data
+
     def create(self, validated_data):
+        beat_types = validated_data.pop("_beat_types", None)
+        receive_all = validated_data.pop("receive_all_beat_types", False)
         company = self.context["company"]
         user = User(
             username=f"op{uuid.uuid4().hex[:20]}",
@@ -103,13 +130,34 @@ class OperatorSerializer(serializers.ModelSerializer):
         )
         user.set_unusable_password()
         user.save()
-        return Operator.objects.create(company=company, user=user, **validated_data)
+        operator = Operator.objects.create(company=company, user=user, **validated_data)
+        if beat_types is not None or receive_all:
+            apply_assignment(
+                operator, receive_all=receive_all, beat_types=beat_types or []
+            )
+        return operator
 
     def update(self, instance, validated_data):
+        beat_types = validated_data.pop("_beat_types", None)
+        receive_all = validated_data.pop("receive_all_beat_types", None)
         instance.first_name = validated_data.get("first_name", instance.first_name)
         instance.last_name = validated_data.get("last_name", instance.last_name)
         instance.email = validated_data.get("email", instance.email)
         instance.save(update_fields=["first_name", "last_name", "email"])
+        if receive_all is not None or beat_types is not None:
+            apply_assignment(
+                instance,
+                receive_all=(
+                    receive_all
+                    if receive_all is not None
+                    else instance.receive_all_beat_types
+                ),
+                beat_types=(
+                    beat_types
+                    if beat_types is not None
+                    else list(instance.assigned_beat_types.all())
+                ),
+            )
         user = instance.user
         user.first_name = instance.first_name
         user.last_name = instance.last_name

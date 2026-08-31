@@ -38,7 +38,7 @@ from .validation import (
 User = get_user_model()
 
 
-class IngestAndMonitorTests(APITestCase):
+class CompanyFixtureTests(APITestCase):
     def setUp(self):
         self.company = Company.objects.create(name="Labbe 2", slug="labbe-2")
         grant_demo(self.company)
@@ -74,6 +74,7 @@ class IngestAndMonitorTests(APITestCase):
             last_name="Pérez",
             email="op@labbe.test",
         )
+        self.operator.assigned_beat_types.add(self.beat_type)
 
     def _ingest(self, token=None, body=None, **extra):
         auth = token if token is not None else self.token
@@ -87,6 +88,61 @@ class IngestAndMonitorTests(APITestCase):
             **headers,
         )
 
+    def _hub_session(self, user=None, company=None):
+        self.client.force_login(user or self.staff)
+        session = self.client.session
+        session["company_id"] = (company or self.company).id
+        session.save()
+
+    def _operator_token(self):
+        return issue_operator_jwt(self.operator)
+
+    def _invite_and_activate(
+        self,
+        first_name,
+        last_name,
+        email,
+        digit="7",
+        password="OperatorClave99",
+        receive_all_beat_types=False,
+        beat_type_ids=None,
+    ):
+        with patch("hub.otp.secrets.choice", return_value=digit):
+            invited = self.client.post(
+                "/api/operators/invite/",
+                {
+                    "first_name": first_name,
+                    "last_name": last_name,
+                    "email": email,
+                    "receive_all_beat_types": receive_all_beat_types,
+                    "beat_type_ids": beat_type_ids or [],
+                },
+                format="json",
+            )
+        self.assertEqual(invited.status_code, 200)
+        self.assertFalse(Operator.objects.filter(email__iexact=email).exists())
+        challenge = OperatorInviteChallenge.objects.get(email=email.lower())
+        verified = self.client.post(
+            "/api/public/operator/verify/",
+            {"token": challenge.token, "otp": digit * 6},
+            format="json",
+        )
+        self.assertEqual(verified.status_code, 200)
+        self.assertFalse(Operator.objects.filter(email__iexact=email).exists())
+        activated = self.client.post(
+            "/api/public/operator/password/",
+            {
+                "grant": verified.data["grant"],
+                "password": password,
+                "password2": password,
+            },
+            format="json",
+        )
+        self.assertEqual(activated.status_code, 201)
+        return Operator.objects.get(email=email.lower())
+
+
+class IngestAndMonitorTests(CompanyFixtureTests):
     def test_ingest_requires_jwt(self):
         response = self._ingest(token="")
         self.assertEqual(response.status_code, 401)
@@ -164,12 +220,6 @@ class IngestAndMonitorTests(APITestCase):
         self.assertEqual(second.status_code, 409)
         self.assertIn("Beats", second.data["detail"])
 
-    def _hub_session(self, user=None, company=None):
-        self.client.force_login(user or self.staff)
-        session = self.client.session
-        session["company_id"] = (company or self.company).id
-        session.save()
-
     def test_monitor_otp_login_and_list(self):
         self._ingest()
         unknown = self.client.post(
@@ -222,41 +272,6 @@ class IngestAndMonitorTests(APITestCase):
         )
         self.assertEqual(denied.status_code, 400)
         self.assertEqual(denied.data["detail"], MONITOR_CREDENTIALS_ERROR)
-
-    def _invite_and_activate(
-        self, first_name, last_name, email, digit="7", password="OperatorClave99"
-    ):
-        with patch("hub.otp.secrets.choice", return_value=digit):
-            invited = self.client.post(
-                "/api/operators/invite/",
-                {
-                    "first_name": first_name,
-                    "last_name": last_name,
-                    "email": email,
-                },
-                format="json",
-            )
-        self.assertEqual(invited.status_code, 200)
-        self.assertFalse(Operator.objects.filter(email__iexact=email).exists())
-        challenge = OperatorInviteChallenge.objects.get(email=email.lower())
-        verified = self.client.post(
-            "/api/public/operator/verify/",
-            {"token": challenge.token, "otp": digit * 6},
-            format="json",
-        )
-        self.assertEqual(verified.status_code, 200)
-        self.assertFalse(Operator.objects.filter(email__iexact=email).exists())
-        activated = self.client.post(
-            "/api/public/operator/password/",
-            {
-                "grant": verified.data["grant"],
-                "password": password,
-                "password2": password,
-            },
-            format="json",
-        )
-        self.assertEqual(activated.status_code, 201)
-        return Operator.objects.get(email=email.lower())
 
     def test_hub_operator_crud_is_tenant_scoped(self):
         other = Company.objects.create(name="Otra", slug="otra")
@@ -690,9 +705,6 @@ class IngestAndMonitorTests(APITestCase):
         self.assertEqual(len(beats.data), 1)
         self.assertEqual(beats.data[0]["title"], "Cola recuperada")
 
-    def _operator_token(self):
-        return issue_operator_jwt(self.operator)
-
     def test_monitor_password_create_change_and_login(self):
         token = self._operator_token()
         unauthorized = self.client.post(
@@ -885,3 +897,263 @@ class IngestAndMonitorTests(APITestCase):
         response = api_exception_handler(OperationalError("slots"), {})
         self.assertEqual(response.status_code, 503)
         self.assertIn("base de datos", response.data["detail"])
+
+
+class BeatAssignmentTests(CompanyFixtureTests):
+    def setUp(self):
+        super().setUp()
+        self.aviso = BeatType.objects.create(
+            company=self.company,
+            name="Aviso",
+            slug="aviso",
+        )
+        self.other_company = Company.objects.create(name="Otra", slug="otra-asig")
+        grant_demo(self.other_company)
+        self.foreign_type = BeatType.objects.create(
+            company=self.other_company,
+            name="Ajeno",
+            slug="ajeno",
+        )
+
+    def _monitor_beats(self, token):
+        return self.client.get(
+            "/api/monitor/beats/",
+            HTTP_AUTHORIZATION=f"Bearer {token}",
+        )
+
+    def test_operator_without_assignment_lists_no_beats(self):
+        self.operator.assigned_beat_types.clear()
+        self.operator.receive_all_beat_types = False
+        self.operator.save(update_fields=["receive_all_beat_types"])
+        self._ingest()
+        self._ingest(body={"type": "aviso", "title": "Solo aviso"})
+        listed = self._monitor_beats(self._operator_token())
+        self.assertEqual(listed.status_code, 200)
+        self.assertEqual(listed.data, [])
+
+    def test_operator_lists_only_assigned_types(self):
+        self.operator.assigned_beat_types.set([self.aviso])
+        self.operator.receive_all_beat_types = False
+        self.operator.save(update_fields=["receive_all_beat_types"])
+        self._ingest()
+        self._ingest(body={"type": "aviso", "title": "Disco lleno"})
+        listed = self._monitor_beats(self._operator_token())
+        self.assertEqual(listed.status_code, 200)
+        self.assertEqual([item["title"] for item in listed.data], ["Disco lleno"])
+
+    def test_operator_all_types_lists_every_beat(self):
+        self.operator.assigned_beat_types.clear()
+        self.operator.receive_all_beat_types = True
+        self.operator.save(update_fields=["receive_all_beat_types"])
+        self._ingest()
+        self._ingest(body={"type": "aviso", "title": "Disco lleno"})
+        listed = self._monitor_beats(self._operator_token())
+        self.assertEqual(listed.status_code, 200)
+        titles = {item["title"] for item in listed.data}
+        self.assertEqual(titles, {"Cola recuperada", "Disco lleno"})
+
+    def test_hub_admin_lists_all_beats(self):
+        self.operator.assigned_beat_types.clear()
+        self._ingest()
+        self._ingest(body={"type": "aviso", "title": "Disco lleno"})
+        token = issue_monitor_jwt(MonitorActor.from_admin(self.staff, self.company))
+        listed = self._monitor_beats(token)
+        self.assertEqual(listed.status_code, 200)
+        titles = {item["title"] for item in listed.data}
+        self.assertEqual(titles, {"Cola recuperada", "Disco lleno"})
+
+    def test_invite_stores_assignment_and_activate_applies_it(self):
+        self._hub_session()
+        created = self._invite_and_activate(
+            "Luis",
+            "García",
+            "luis@labbe.test",
+            beat_type_ids=[self.aviso.id],
+        )
+        self.assertFalse(created.receive_all_beat_types)
+        self.assertEqual(
+            list(created.assigned_beat_types.values_list("id", flat=True)),
+            [self.aviso.id],
+        )
+        self._ingest()
+        self._ingest(body={"type": "aviso", "title": "Disco lleno"})
+        listed = self._monitor_beats(issue_operator_jwt(created))
+        self.assertEqual([item["title"] for item in listed.data], ["Disco lleno"])
+
+    def test_invite_all_types_applies_on_activate(self):
+        self._hub_session()
+        created = self._invite_and_activate(
+            "Luis",
+            "García",
+            "luis@labbe.test",
+            receive_all_beat_types=True,
+            beat_type_ids=[self.aviso.id],
+        )
+        self.assertTrue(created.receive_all_beat_types)
+        self.assertEqual(list(created.assigned_beat_types.all()), [])
+
+    def test_invite_rejects_foreign_beat_type(self):
+        self._hub_session()
+        response = self.client.post(
+            "/api/operators/invite/",
+            {
+                "first_name": "Luis",
+                "last_name": "García",
+                "email": "luis@labbe.test",
+                "beat_type_ids": [self.foreign_type.id],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(
+            OperatorInviteChallenge.objects.filter(email="luis@labbe.test").exists()
+        )
+
+    def test_pending_lists_and_updates_assignment(self):
+        self._hub_session()
+        with patch("hub.otp.secrets.choice", return_value="5"):
+            invited = self.client.post(
+                "/api/operators/invite/",
+                {
+                    "first_name": "Luis",
+                    "last_name": "García",
+                    "email": "luis@labbe.test",
+                    "beat_type_ids": [self.beat_type.id],
+                },
+                format="json",
+            )
+        self.assertEqual(invited.status_code, 200)
+        pending = self.client.get("/api/operators/pending/")
+        self.assertEqual(pending.status_code, 200)
+        self.assertEqual(len(pending.data), 1)
+        self.assertEqual(pending.data[0]["beat_type_ids"], [self.beat_type.id])
+        self.assertFalse(pending.data[0]["receive_all_beat_types"])
+        invite_id = pending.data[0]["id"]
+        updated = self.client.patch(
+            f"/api/operators/pending/{invite_id}/",
+            {
+                "first_name": "Luis",
+                "last_name": "García",
+                "receive_all_beat_types": True,
+                "beat_type_ids": [],
+            },
+            format="json",
+        )
+        self.assertEqual(updated.status_code, 200)
+        self.assertTrue(updated.data["receive_all_beat_types"])
+        self.assertEqual(updated.data["beat_type_ids"], [])
+        challenge = OperatorInviteChallenge.objects.get(pk=invite_id)
+        self.assertTrue(challenge.receive_all_beat_types)
+        verified = self.client.post(
+            "/api/public/operator/verify/",
+            {"token": challenge.token, "otp": "555555"},
+            format="json",
+        )
+        self.assertEqual(verified.status_code, 200)
+        activated = self.client.post(
+            "/api/public/operator/password/",
+            {
+                "grant": verified.data["grant"],
+                "password": "OperatorClave99",
+                "password2": "OperatorClave99",
+            },
+            format="json",
+        )
+        self.assertEqual(activated.status_code, 201)
+        operator = Operator.objects.get(email="luis@labbe.test")
+        self.assertTrue(operator.receive_all_beat_types)
+
+    def test_patch_operator_assignment(self):
+        self._hub_session()
+        listed = self.client.get("/api/operators/")
+        self.assertEqual(listed.status_code, 200)
+        ana = next(item for item in listed.data if item["email"] == "op@labbe.test")
+        self.assertEqual(ana["beat_type_ids"], [self.beat_type.id])
+        patched = self.client.patch(
+            f"/api/operators/{self.operator.id}/",
+            {
+                "receive_all_beat_types": False,
+                "beat_type_ids": [self.aviso.id],
+            },
+            format="json",
+        )
+        self.assertEqual(patched.status_code, 200)
+        self.assertEqual(patched.data["beat_type_ids"], [self.aviso.id])
+        self.operator.refresh_from_db()
+        self.assertEqual(
+            list(self.operator.assigned_beat_types.values_list("id", flat=True)),
+            [self.aviso.id],
+        )
+
+    def test_patch_operator_rejects_foreign_type(self):
+        self._hub_session()
+        patched = self.client.patch(
+            f"/api/operators/{self.operator.id}/",
+            {"beat_type_ids": [self.foreign_type.id]},
+            format="json",
+        )
+        self.assertEqual(patched.status_code, 400)
+
+    async def test_monitor_websocket_routes_by_assignment(self):
+        from asgiref.sync import sync_to_async
+        from channels.testing import WebsocketCommunicator
+
+        from config.asgi import application
+        from .notify import notify_company_beat
+
+        await sync_to_async(self.operator.assigned_beat_types.set)([self.aviso])
+        self.operator.receive_all_beat_types = False
+        await sync_to_async(self.operator.save)(update_fields=["receive_all_beat_types"])
+
+        other_user = await sync_to_async(User.objects.create_user)(
+            username="opsin",
+            email="sin@labbe.test",
+            password="password12",
+        )
+        other = await sync_to_async(Operator.objects.create)(
+            company=self.company,
+            user=other_user,
+            first_name="Sin",
+            last_name="Tipo",
+            email="sin@labbe.test",
+        )
+
+        assigned = WebsocketCommunicator(
+            application, f"/ws/monitor/?token={issue_operator_jwt(self.operator)}"
+        )
+        skipped = WebsocketCommunicator(
+            application, f"/ws/monitor/?token={issue_operator_jwt(other)}"
+        )
+        admin = WebsocketCommunicator(
+            application,
+            f"/ws/monitor/?token={issue_monitor_jwt(MonitorActor.from_admin(self.staff, self.company))}",
+        )
+        for socket in (assigned, skipped, admin):
+            connected, _ = await socket.connect()
+            self.assertTrue(connected)
+            hello = await socket.receive_json_from()
+            self.assertEqual(hello.get("type"), "ready")
+
+        beat = await sync_to_async(Beat.objects.create)(
+            company=self.company,
+            system=self.system,
+            beat_type=self.aviso,
+            title="Solo aviso",
+            payload={},
+        )
+        beat = await sync_to_async(
+            Beat.objects.select_related("system", "beat_type").get
+        )(pk=beat.pk)
+        await sync_to_async(notify_company_beat)(beat)
+
+        assigned_msg = await assigned.receive_json_from()
+        self.assertEqual(assigned_msg["type"], "beat")
+        self.assertEqual(assigned_msg["beat"]["title"], "Solo aviso")
+        admin_msg = await admin.receive_json_from()
+        self.assertEqual(admin_msg["type"], "beat")
+        self.assertEqual(admin_msg["beat"]["title"], "Solo aviso")
+        self.assertTrue(await skipped.receive_nothing())
+
+        await assigned.disconnect()
+        await skipped.disconnect()
+        await admin.disconnect()
