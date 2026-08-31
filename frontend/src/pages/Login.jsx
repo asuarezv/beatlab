@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import PasswordField from "../components/PasswordField.jsx";
 import { login } from "../api.js";
 import { EMAIL_ERROR, isValidEmail } from "../fieldRules.js";
 
 export default function Login({ onLogin }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
   const [emailBlurred, setEmailBlurred] = useState(false);
@@ -61,17 +63,15 @@ export default function Login({ onLogin }) {
           required
         />
       </label>
-      <label>
-        Contraseña
-        <input
-          name="password"
-          type="password"
-          autoComplete="current-password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-        />
-      </label>
+      <PasswordField
+        label="Contraseña"
+        name="password"
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+        autoComplete="current-password"
+        visible={showPassword}
+        onToggle={() => setShowPassword((value) => !value)}
+      />
       {error ? <p className="error">{error}</p> : null}
       <button type="submit" disabled={pending}>
         {pending ? "Entrando…" : "Entrar"}
