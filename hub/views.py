@@ -42,7 +42,9 @@ from .assignment import (
     beats_visible_to_actor,
     parse_receive_all,
     resolve_company_beat_types,
+    types_visible_to_actor,
 )
+from .stats import beat_stats_payload
 from .notify import beat_payload, notify_company_beat
 from .tokens import (
     MONITOR_ROLE_ADMIN,
@@ -789,6 +791,22 @@ class BeatViewSet(TenantViewSet):
         return Beat.objects.filter(company=self.company).select_related(
             "system", "beat_type"
         )
+
+    @action(detail=False, methods=["get"], url_path="stats")
+    def stats(self, request):
+        if not self.company:
+            return Response(
+                {"detail": "No hay empresa activa."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if self.hub_operator:
+            actor = MonitorActor.from_operator(self.hub_operator)
+            types = types_visible_to_actor(actor)
+            beats = beats_visible_to_actor(actor)
+        else:
+            types = BeatType.objects.filter(company=self.company)
+            beats = Beat.objects.filter(company=self.company)
+        return Response(beat_stats_payload(beats=beats, types=types))
 
 
 @api_view(["POST"])
