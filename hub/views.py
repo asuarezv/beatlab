@@ -20,6 +20,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
 from .authentication import (
+    HubMonitorSessionAuthentication,
     IsOperatorToken,
     IsSystemJWT,
     OperatorTokenAuthentication,
@@ -86,6 +87,7 @@ from .validation import (
 from .quota import (
     assert_can_consume_beat,
     assert_company_writable,
+    company_identity_payload,
     company_payload,
     grant_demo,
     usage_payload,
@@ -129,7 +131,12 @@ def _staff_ok(user):
     return user.is_authenticated and (user.is_staff or user.is_superuser)
 
 
+def _django_request(request):
+    return getattr(request, "_request", request)
+
+
 def hub_role(request):
+    request = _django_request(request)
     stored = request.session.get("hub_role")
     if stored in {MONITOR_ROLE_ADMIN, MONITOR_ROLE_OPERATOR}:
         return stored
@@ -139,6 +146,7 @@ def hub_role(request):
 
 
 def current_operator(request):
+    request = _django_request(request)
     if hub_role(request) != MONITOR_ROLE_OPERATOR:
         return None
     if not request.user.is_authenticated:
@@ -154,6 +162,7 @@ def current_operator(request):
 
 
 def is_hub_admin(request):
+    request = _django_request(request)
     return hub_role(request) == MONITOR_ROLE_ADMIN and _staff_ok(request.user)
 
 
@@ -179,7 +188,7 @@ def session_payload(request, user):
             "companies": [
                 {"id": company.id, "name": company.name, "slug": company.slug}
             ],
-            "current_company": company_payload(company),
+            "current_company": company_identity_payload(company),
         }
     company = current_company(request)
     return {
@@ -1110,8 +1119,11 @@ def monitor_password(request):
     )
 
 
+MONITOR_LIST_AUTH = [OperatorTokenAuthentication, HubMonitorSessionAuthentication]
+
+
 @api_view(["GET"])
-@authentication_classes([OperatorTokenAuthentication])
+@authentication_classes(MONITOR_LIST_AUTH)
 @permission_classes([IsOperatorToken])
 def monitor_beats(request):
     actor = request.auth
@@ -1120,7 +1132,7 @@ def monitor_beats(request):
 
 
 @api_view(["GET"])
-@authentication_classes([OperatorTokenAuthentication])
+@authentication_classes(MONITOR_LIST_AUTH)
 @permission_classes([IsOperatorToken])
 def monitor_stats(request):
     actor = request.auth

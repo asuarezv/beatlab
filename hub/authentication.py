@@ -32,7 +32,7 @@ class OperatorTokenAuthentication(BaseAuthentication):
     def authenticate(self, request):
         token = _bearer(request)
         if not token:
-            raise AuthenticationFailed("Falta el token del Operator.")
+            return None
         actor = verify_monitor_token(token)
         if actor is None:
             raise AuthenticationFailed("Token inválido o vencido.")
@@ -40,6 +40,16 @@ class OperatorTokenAuthentication(BaseAuthentication):
 
     def authenticate_header(self, request):
         return "Bearer"
+
+
+class HubMonitorSessionAuthentication(BaseAuthentication):
+    def authenticate(self, request):
+        from .views import current_operator
+
+        operator = current_operator(getattr(request, "_request", request))
+        if operator is None:
+            return None
+        return (operator.user, MonitorActor.from_operator(operator))
 
 
 class IsSystemJWT(BasePermission):

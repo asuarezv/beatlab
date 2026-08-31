@@ -1,5 +1,6 @@
 import { NavLink } from "react-router-dom";
 import { logout } from "../api.js";
+import { ADMIN_NAV, OPERATOR_NAV, isOperatorRole, showAdminQuota } from "../hubAccess.js";
 
 export default function Shell({ session, onSession, children }) {
   async function handleLogout() {
@@ -11,7 +12,7 @@ export default function Shell({ session, onSession, children }) {
   }
 
   const company = session.current_company;
-  const isOperator = session.role === "operator";
+  const nav = isOperatorRole(session) ? OPERATOR_NAV : ADMIN_NAV;
 
   return (
     <div className="wrap">
@@ -19,7 +20,7 @@ export default function Shell({ session, onSession, children }) {
         <div>
           <p className="eyebrow">BeatLab</p>
           <h1>Hub{company ? ` · ${company.name}` : ""}</h1>
-          {!isOperator && company?.trial_active ? (
+          {showAdminQuota(session) ? (
             <p className="muted">
               Demo · {company.trial_days_left} día
               {company.trial_days_left === 1 ? "" : "s"} ·{" "}
@@ -29,26 +30,11 @@ export default function Shell({ session, onSession, children }) {
           ) : null}
         </div>
         <nav>
-          {isOperator ? (
-            <>
-              <NavLink to="/" end>
-                Monitoreo
-              </NavLink>
-              <NavLink to="/perfil">Perfil</NavLink>
-            </>
-          ) : (
-            <>
-              <NavLink to="/" end>
-                Salud
-              </NavLink>
-              <NavLink to="/systems">Systems</NavLink>
-              <NavLink to="/operators">Operators</NavLink>
-              <NavLink to="/tipos">Tipos</NavLink>
-              <NavLink to="/beats">Beats</NavLink>
-              <NavLink to="/glosario">Glosario</NavLink>
-              <NavLink to="/perfil">Perfil</NavLink>
-            </>
-          )}
+          {nav.map((item) => (
+            <NavLink key={item.to} to={item.to} end={item.end}>
+              {item.label}
+            </NavLink>
+          ))}
           <button type="button" onClick={handleLogout}>
             Salir
           </button>

@@ -33,22 +33,33 @@ def trial_days_left(company: Company) -> int:
     return max(1, math.ceil(seconds / 86400))
 
 
-def company_payload(company: Company | None) -> dict | None:
+def company_identity_payload(company: Company | None) -> dict | None:
     if not company:
         return None
-    used = company.beats_used()
-    included = company.beats_included()
     return {
         "id": company.id,
         "name": company.name,
         "slug": company.slug,
-        "trial_ends_at": company.trial_ends_at.isoformat() if company.trial_ends_at else None,
-        "trial_active": company.trial_active(),
-        "trial_days_left": trial_days_left(company),
-        "beats_included": included,
-        "beats_used": used,
-        "beats_remaining": max(0, included - used),
     }
+
+
+def company_payload(company: Company | None) -> dict | None:
+    identity = company_identity_payload(company)
+    if not identity:
+        return None
+    used = company.beats_used()
+    included = company.beats_included()
+    identity.update(
+        {
+            "trial_ends_at": company.trial_ends_at.isoformat() if company.trial_ends_at else None,
+            "trial_active": company.trial_active(),
+            "trial_days_left": trial_days_left(company),
+            "beats_included": included,
+            "beats_used": used,
+            "beats_remaining": max(0, included - used),
+        }
+    )
+    return identity
 
 
 def usage_payload(company: Company) -> dict:

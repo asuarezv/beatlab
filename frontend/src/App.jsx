@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { fetchCsrf, fetchMe } from "./api.js";
 import PublicShell from "./components/PublicShell.jsx";
 import Shell from "./components/Shell.jsx";
+import { ADMIN_ONLY_PATHS, OPERATOR_HOME, isOperatorRole } from "./hubAccess.js";
 import Beats from "./pages/Beats.jsx";
 import BeatTypes from "./pages/BeatTypes.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
@@ -79,7 +80,7 @@ export default function App() {
     );
   }
 
-  const isOperator = session.role === "operator";
+  const isOperator = isOperatorRole(session);
 
   return (
     <Routes>
@@ -94,19 +95,40 @@ export default function App() {
             <Routes>
               {isOperator ? (
                 <>
-                  <Route index element={<Monitoreo />} />
+                  <Route
+                    index
+                    element={<Navigate to={OPERATOR_HOME} replace />}
+                  />
                   <Route path="monitoreo" element={<Monitoreo />} />
-                  <Route path="glosario" element={<Glossary />} />
                   <Route
                     path="perfil"
                     element={
                       <Profile session={session} onSession={setSession} />
                     }
                   />
-                  <Route path="login" element={<Navigate to="/" replace />} />
-                  <Route path="entrar" element={<Navigate to="/" replace />} />
-                  <Route path="registro" element={<Navigate to="/" replace />} />
-                  <Route path="*" element={<Navigate to="/" replace />} />
+                  <Route
+                    path="login"
+                    element={<Navigate to={OPERATOR_HOME} replace />}
+                  />
+                  <Route
+                    path="entrar"
+                    element={<Navigate to={OPERATOR_HOME} replace />}
+                  />
+                  <Route
+                    path="registro"
+                    element={<Navigate to={OPERATOR_HOME} replace />}
+                  />
+                  {ADMIN_ONLY_PATHS.map((path) => (
+                    <Route
+                      key={path}
+                      path={path.replace(/^\//, "")}
+                      element={<Navigate to={OPERATOR_HOME} replace />}
+                    />
+                  ))}
+                  <Route
+                    path="*"
+                    element={<Navigate to={OPERATOR_HOME} replace />}
+                  />
                 </>
               ) : (
                 <>

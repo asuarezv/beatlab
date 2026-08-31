@@ -1219,6 +1219,16 @@ class HubOperatorWebTests(CompanyFixtureTests):
         )
         self.assertEqual(ingest.status_code, 401)
 
+    def test_operator_session_omits_admin_quota(self):
+        self._operator_hub_login()
+        me = self.client.get("/api/auth/me/")
+        self.assertEqual(me.status_code, 200)
+        company = me.json()["current_company"]
+        self.assertEqual(company["id"], self.company.id)
+        self.assertNotIn("beats_remaining", company)
+        self.assertNotIn("beats_included", company)
+        self.assertNotIn("trial_active", company)
+
     def test_operator_beats_are_filtered_by_assignment(self):
         self.operator.assigned_beat_types.set([self.aviso])
         self.operator.receive_all_beat_types = False
@@ -1226,9 +1236,23 @@ class HubOperatorWebTests(CompanyFixtureTests):
         self._ingest()
         self._ingest(body={"type": "aviso", "title": "Disco lleno"})
         self._operator_hub_login()
-        listed = self.client.get("/api/beats/")
+        listed = self.client.get("/api/monitor/beats/")
         self.assertEqual(listed.status_code, 200)
         self.assertEqual([item["title"] for item in listed.data], ["Disco lleno"])
+        stats = self.client.get("/api/monitor/stats/")
+        self.assertEqual(stats.status_code, 200)
+        self.assertEqual(stats.data["beats_total"], 1)
+        self.assertEqual(stats.data["by_type"][0]["name"], "Aviso")
+        hub_list = self.client.get("/api/beats/")
+        self.assertEqual(hub_list.status_code, 200)
+        self.assertEqual([item["title"] for item in hub_list.data], ["Disco lleno"])
+
+    def test_admin_hub_session_cannot_use_monitor_list_without_jwt(self):
+        self._hub_session()
+        beats = self.client.get("/api/monitor/beats/")
+        self.assertEqual(beats.status_code, 401)
+        stats = self.client.get("/api/monitor/stats/")
+        self.assertEqual(stats.status_code, 401)
 
     def test_admin_hub_nav_unchanged(self):
         self._hub_session()
@@ -1238,6 +1262,7 @@ class HubOperatorWebTests(CompanyFixtureTests):
         self.assertEqual(systems.status_code, 200)
         me = self.client.get("/api/auth/me/")
         self.assertEqual(me.json()["role"], "admin")
+        self.assertIn("beats_remaining", me.json()["current_company"])
 
     async def test_monitor_websocket_accepts_operator_hub_session(self):
         from asgiref.sync import sync_to_async

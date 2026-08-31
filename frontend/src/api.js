@@ -215,6 +215,14 @@ export function listBeats() {
   return request("/api/beats/");
 }
 
+export function listMonitorBeats() {
+  return request("/api/monitor/beats/");
+}
+
+export function fetchMonitorStats() {
+  return request("/api/monitor/stats/");
+}
+
 export function monitorWsUrl() {
   const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
   return `${proto}//${window.location.host}/ws/monitor/`;

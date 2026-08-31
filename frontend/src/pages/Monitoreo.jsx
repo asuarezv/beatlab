@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import BeatCharts from "../components/BeatCharts.jsx";
 import { BeatMarks } from "../components/BeatIcons.jsx";
-import { fetchBeatStats, listBeats, monitorWsUrl } from "../api.js";
+import { fetchMonitorStats, listMonitorBeats, monitorWsUrl } from "../api.js";
 
 const POLL_MS = 4000;
 
@@ -24,7 +24,10 @@ export default function Monitoreo() {
     let cancelled = false;
     async function refresh() {
       try {
-        const [beats, nextStats] = await Promise.all([listBeats(), fetchBeatStats()]);
+        const [beats, nextStats] = await Promise.all([
+          listMonitorBeats(),
+          fetchMonitorStats(),
+        ]);
         if (!cancelled) {
           setItems(Array.isArray(beats) ? beats : beats.results || []);
           setStats(nextStats);
