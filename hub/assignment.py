@@ -66,6 +66,19 @@ def operators_for_beat(beat: Beat):
     )
 
 
+def types_visible_to_actor(actor):
+    types = BeatType.objects.filter(company=actor.company)
+    if actor.operator is None:
+        return types
+    operator = actor.operator
+    if operator.receive_all_beat_types:
+        return types
+    type_ids = list(operator.assigned_beat_types.values_list("id", flat=True))
+    if not type_ids:
+        return types.none()
+    return types.filter(pk__in=type_ids)
+
+
 def beats_visible_to_actor(actor):
     beats = Beat.objects.filter(company=actor.company).select_related(
         "system", "beat_type"

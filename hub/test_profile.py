@@ -608,3 +608,97 @@ class MonitorAdminProfileTests(APITestCase):
         )
         self.assertEqual(login.status_code, 200)
         self.assertEqual(login.data["role"], "admin")
+
+
+class HubOperatorProfileTests(APITestCase):
+    def setUp(self):
+        self.company = Company.objects.create(name="Labbe 2", slug="labbe-2")
+        grant_demo(self.company)
+        self.staff = User.objects.create_user(
+            username="hubadmin",
+            email="hubadmin@labbe.test",
+            password="password12",
+            is_staff=True,
+        )
+        ensure_membership(self.staff, self.company)
+        self.op_user = User.objects.create_user(
+            username="opdemo",
+            email="op@labbe.test",
+            password="password12",
+            first_name="Ana",
+            last_name="Pérez",
+        )
+        self.operator = Operator.objects.create(
+            company=self.company,
+            user=self.op_user,
+            first_name="Ana",
+            last_name="Pérez",
+            email="op@labbe.test",
+        )
+        self.operator.set_password("OperatorClave99")
+        self.operator.save(update_fields=["password_hash"])
+
+    def _login(self):
+        response = self.client.post(
+            "/api/auth/login/",
+            {"email": "op@labbe.test", "password": "OperatorClave99"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        return response
+
+    def test_hub_profile_updates_operator_and_confirms_email(self):
+        self._login()
+        with patch("hub.otp.secrets.choice", return_value="8"):
+            response = self.client.patch(
+                "/api/auth/profile/",
+                {
+                    "first_name": "Ana María",
+                    "last_name": "García",
+                    "email": "ana@labbe.test",
+                },
+                format="json",
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["detail"], EMAIL_CHANGE_SENT)
+        self.assertEqual(response.json()["pending_email"], "ana@labbe.test")
+        self.assertEqual(response.json()["role"], "operator")
+        self.assertEqual(response.json()["user"]["email"], "op@labbe.test")
+        self.assertEqual(response.json()["user"]["first_name"], "Ana María")
+        confirmed = self.client.post(
+            "/api/auth/profile/verify/",
+            {"email": "ana@labbe.test", "otp": "888888"},
+            format="json",
+        )
+        self.assertEqual(confirmed.status_code, 200)
+        self.assertEqual(confirmed.json()["detail"], PROFILE_UPDATED)
+        self.assertEqual(confirmed.json()["user"]["email"], "ana@labbe.test")
+        self.operator.refresh_from_db()
+        self.op_user.refresh_from_db()
+        self.assertEqual(self.operator.email, "ana@labbe.test")
+        self.assertEqual(self.op_user.email, "ana@labbe.test")
+
+    def test_hub_password_updates_operator_hash(self):
+        self._login()
+        updated = self.client.post(
+            "/api/auth/password/",
+            {
+                "current_password": "OperatorClave99",
+                "password": "OtraClave88",
+                "password2": "OtraClave88",
+            },
+            format="json",
+        )
+        self.assertEqual(updated.status_code, 200)
+        self.assertEqual(updated.json()["detail"], PASSWORD_UPDATED)
+        self.operator.refresh_from_db()
+        self.assertTrue(self.operator.check_password("OtraClave88"))
+        self.assertFalse(self.op_user.check_password("OtraClave88"))
+        self.client.logout()
+        again = self.client.post(
+            "/api/auth/login/",
+            {"email": "op@labbe.test", "password": "OtraClave88"},
+            format="json",
+        )
+        self.assertEqual(again.status_code, 200)
+        self.assertEqual(again.json()["role"], "operator")

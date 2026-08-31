@@ -5,6 +5,9 @@
   --text: #e8eef5;
   --muted: #9aa8b8;
   --accent: #6ee7ff;
+  --warn: #f5c16c;
+  --alert: #ff9f6e;
+  --crit: #ff6b6b;
   --danger: #ff8a8a;
   --line: #223042;
   --font: system-ui, sans-serif;
@@ -67,7 +70,7 @@ select {
 }
 
 .wrap {
-  width: min(100% - 2rem, 960px);
+  width: min(100% - 2rem, 1100px);
   margin: 0 auto;
   padding: 2rem 0 4rem;
 }
@@ -112,7 +115,7 @@ select {
 
 .public-header-inner,
 .public-footer-inner {
-  width: min(100% - 2rem, 960px);
+  width: min(100% - 2rem, 1100px);
   margin: 0 auto;
   display: flex;
   flex-wrap: wrap;
@@ -163,7 +166,7 @@ select {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: min(100% - 2rem, 960px);
+  width: min(100% - 2rem, 1100px);
   margin: 0 auto;
   padding: 2rem 0;
 }
@@ -997,4 +1000,95 @@ button.glossary-entry strong {
 
 .confirm-actions button {
   flex: 1 1 7rem;
+}
+
+.charts-panel {
+  margin-top: 1.5rem;
+}
+
+.charts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.chart-card {
+  min-height: 18rem;
+}
+
+.chart-card .eyebrow {
+  margin-bottom: 0.65rem;
+}
+
+.chart-body {
+  height: 15.5rem;
+}
+
+.beat-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+}
+
+.beat-marks {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex: 0 0 auto;
+  margin-top: 0.15rem;
+}
+
+.beat-icon {
+  display: block;
+  flex: 0 0 auto;
+}
+
+.type-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 0.65rem;
+}
+
+.type-form select {
+  flex: 0 1 8.5rem;
+}
+
+.sev-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-left: 0.35rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+  vertical-align: middle;
+}
+
+.sev-info {
+  color: var(--accent);
+  border-color: #2a4a55;
+}
+
+.sev-aviso {
+  color: var(--warn);
+  border-color: #4a3d22;
+}
+
+.sev-alerta {
+  color: var(--alert);
+  border-color: #4a3226;
+}
+
+.sev-critica {
+  color: var(--crit);
+  border-color: #4a2424;
+}
+
+@media (max-width: 800px) {
+  .charts {
+    grid-template-columns: 1fr;
+  }
 }

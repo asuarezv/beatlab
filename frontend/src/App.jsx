@@ -11,6 +11,7 @@ import Glossary from "./pages/Glossary.jsx";
 import ActivateOperator, { RecoverOperator } from "./pages/ActivateOperator.jsx";
 import Landing from "./pages/Landing.jsx";
 import Login from "./pages/Login.jsx";
+import Monitoreo from "./pages/Monitoreo.jsx";
 import Operators from "./pages/Operators.jsx";
 import Profile from "./pages/Profile.jsx";
 import Register from "./pages/Register.jsx";
@@ -78,6 +79,8 @@ export default function App() {
     );
   }
 
+  const isOperator = session.role === "operator";
+
   return (
     <Routes>
       <Route element={<PublicShell />}>
@@ -89,21 +92,43 @@ export default function App() {
         element={
           <Shell session={session} onSession={setSession}>
             <Routes>
-              <Route index element={<Dashboard />} />
-              <Route path="consumo" element={<Consumo />} />
-              <Route path="operators" element={<Operators />} />
-              <Route path="systems" element={<Systems />} />
-              <Route path="tipos" element={<BeatTypes />} />
-              <Route path="beats" element={<Beats />} />
-              <Route path="glosario" element={<Glossary />} />
-              <Route
-                path="perfil"
-                element={<Profile session={session} onSession={setSession} />}
-              />
-              <Route path="login" element={<Navigate to="/" replace />} />
-              <Route path="entrar" element={<Navigate to="/" replace />} />
-              <Route path="registro" element={<Navigate to="/" replace />} />
-              <Route path="*" element={<Dashboard />} />
+              {isOperator ? (
+                <>
+                  <Route index element={<Monitoreo />} />
+                  <Route path="monitoreo" element={<Monitoreo />} />
+                  <Route path="glosario" element={<Glossary />} />
+                  <Route
+                    path="perfil"
+                    element={
+                      <Profile session={session} onSession={setSession} />
+                    }
+                  />
+                  <Route path="login" element={<Navigate to="/" replace />} />
+                  <Route path="entrar" element={<Navigate to="/" replace />} />
+                  <Route path="registro" element={<Navigate to="/" replace />} />
+                  <Route path="*" element={<Navigate to="/" replace />} />
+                </>
+              ) : (
+                <>
+                  <Route index element={<Dashboard />} />
+                  <Route path="consumo" element={<Consumo />} />
+                  <Route path="operators" element={<Operators />} />
+                  <Route path="systems" element={<Systems />} />
+                  <Route path="tipos" element={<BeatTypes />} />
+                  <Route path="beats" element={<Beats />} />
+                  <Route path="glosario" element={<Glossary />} />
+                  <Route
+                    path="perfil"
+                    element={
+                      <Profile session={session} onSession={setSession} />
+                    }
+                  />
+                  <Route path="login" element={<Navigate to="/" replace />} />
+                  <Route path="entrar" element={<Navigate to="/" replace />} />
+                  <Route path="registro" element={<Navigate to="/" replace />} />
+                  <Route path="*" element={<Dashboard />} />
+                </>
+              )}
             </Routes>
           </Shell>
         }

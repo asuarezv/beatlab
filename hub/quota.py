@@ -1,11 +1,11 @@
 import math
 from datetime import timedelta
 
-from django.db.models import Count
 from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
-from .models import BeatPackage, BeatType, Company, Operator, System
+from .models import Beat, BeatPackage, BeatType, Company, Operator, System
+from .stats import beat_stats_payload
 
 DEMO_DAYS = 15
 DEMO_BEATS = 10_000
@@ -53,18 +53,16 @@ def company_payload(company: Company | None) -> dict | None:
 
 def usage_payload(company: Company) -> dict:
     payload = company_payload(company)
-    by_type = list(
-        BeatType.objects.filter(company=company)
-        .annotate(consumed=Count("beats"))
-        .order_by("-consumed", "name")
-        .values("id", "name", "consumed")
+    stats = beat_stats_payload(
+        beats=Beat.objects.filter(company=company),
+        types=BeatType.objects.filter(company=company),
     )
     payload.update(
         {
             "systems": System.objects.filter(company=company).count(),
             "operators": Operator.objects.filter(company=company).count(),
             "types": BeatType.objects.filter(company=company).count(),
-            "by_type": by_type,
+            **stats,
         }
     )
     return payload

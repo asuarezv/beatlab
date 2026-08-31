@@ -1,14 +1,11 @@
 import json
 
 from django.contrib.auth import (
-    authenticate,
     get_user_model,
     login,
     logout,
     update_session_auth_hash,
 )
-from django.core.exceptions import ValidationError as DjangoValidationError
-from django.core.validators import validate_email
 from django.db import IntegrityError, transaction
 from django.http import JsonResponse
 from django.middleware.csrf import get_token
@@ -47,7 +44,13 @@ from .assignment import (
     resolve_company_beat_types,
 )
 from .notify import beat_payload, notify_company_beat
-from .tokens import issue_monitor_jwt, issue_system_jwt
+from .tokens import (
+    MONITOR_ROLE_ADMIN,
+    MONITOR_ROLE_OPERATOR,
+    MonitorActor,
+    issue_monitor_jwt,
+    issue_system_jwt,
+)
 from .otp import (
     activate_operator_password,
     consume_email_change_otp,
@@ -66,11 +69,7 @@ from .otp import (
 )
 from .validation import (
     CURRENT_PASSWORD_ERROR,
-    EMAIL_INVALID,
-    HUB_CREDENTIALS_ERROR,
     HUB_EMAIL_TAKEN,
-    HUB_LOGIN_REQUIRED,
-    OPERATOR_ACCOUNT_ON_HUB,
     OPERATOR_EMAIL_TAKEN,
     PASSWORD_CHANGE_REQUIRED,
     PASSWORD_CREATED,
@@ -128,13 +127,81 @@ def _staff_ok(user):
     return user.is_authenticated and (user.is_staff or user.is_superuser)
 
 
+def hub_role(request):
+    stored = request.session.get("hub_role")
+    if stored in {MONITOR_ROLE_ADMIN, MONITOR_ROLE_OPERATOR}:
+        return stored
+    if _staff_ok(request.user):
+        return MONITOR_ROLE_ADMIN
+    return None
+
+
+def current_operator(request):
+    if hub_role(request) != MONITOR_ROLE_OPERATOR:
+        return None
+    if not request.user.is_authenticated:
+        return None
+    operator_id = request.session.get("operator_id")
+    if not operator_id:
+        return None
+    return (
+        Operator.objects.filter(pk=operator_id, user=request.user)
+        .select_related("company", "user")
+        .first()
+    )
+
+
+def is_hub_admin(request):
+    return hub_role(request) == MONITOR_ROLE_ADMIN and _staff_ok(request.user)
+
+
+def operator_user_payload(operator):
+    return {
+        "username": "",
+        "first_name": operator.first_name or "",
+        "last_name": operator.last_name or "",
+        "email": operator.email or "",
+        "display_name": operator.display_name(),
+        "is_staff": False,
+        "is_superuser": False,
+    }
+
+
 def session_payload(request, user):
+    operator = current_operator(request)
+    if operator:
+        company = operator.company
+        return {
+            "role": MONITOR_ROLE_OPERATOR,
+            "user": operator_user_payload(operator),
+            "companies": [
+                {"id": company.id, "name": company.name, "slug": company.slug}
+            ],
+            "current_company": company_payload(company),
+        }
     company = current_company(request)
     return {
+        "role": MONITOR_ROLE_ADMIN,
         "user": user_payload(user),
         "companies": list(companies_for(user).values("id", "name", "slug")),
         "current_company": company_payload(company),
     }
+
+
+def _login_actor(request, actor):
+    login(
+        request,
+        actor.user,
+        backend="django.contrib.auth.backends.ModelBackend",
+    )
+    if actor.operator is not None:
+        request.session["hub_role"] = MONITOR_ROLE_OPERATOR
+        request.session["operator_id"] = actor.operator.id
+        request.session["company_id"] = actor.company_id
+    else:
+        request.session["hub_role"] = MONITOR_ROLE_ADMIN
+        request.session.pop("operator_id", None)
+    _mark_monitor_login(actor)
 
 
 def _unique_company_slug(name: str) -> str:
@@ -163,9 +230,11 @@ def csrf(request):
 @require_GET
 def me(request):
     get_token(request)
-    if not _staff_ok(request.user):
-        return JsonResponse({"user": None, "companies": [], "current_company": None})
-    return JsonResponse(session_payload(request, request.user))
+    if is_hub_admin(request) or current_operator(request):
+        return JsonResponse(session_payload(request, request.user))
+    return JsonResponse(
+        {"user": None, "companies": [], "current_company": None, "role": None}
+    )
 
 
 @require_POST
@@ -173,38 +242,15 @@ def login_view(request):
     data = _json_body(request)
     if data is None:
         return JsonResponse({"detail": "JSON inválido"}, status=400)
-    email = (data.get("email") or "").strip()
-    password = (data.get("password") or "").strip()
-    if not email or not password:
-        return JsonResponse({"detail": HUB_LOGIN_REQUIRED}, status=400)
-    email = email.lower()
     try:
-        validate_email(email)
-    except DjangoValidationError:
-        return JsonResponse({"detail": EMAIL_INVALID}, status=400)
-    operator = (
-        Operator.objects.filter(email__iexact=email)
-        .select_related("user")
-        .first()
-    )
-    if operator and not _staff_ok(operator.user):
-        return JsonResponse({"detail": OPERATOR_ACCOUNT_ON_HUB}, status=400)
-    stored = User.objects.filter(email__iexact=email).first()
-    if (
-        stored
-        and not _staff_ok(stored)
-        and stored.operator_profiles.exists()
-    ):
-        return JsonResponse({"detail": OPERATOR_ACCOUNT_ON_HUB}, status=400)
-    user = authenticate(
-        request,
-        username=stored.username if stored else email,
-        password=password,
-    )
-    if user is None or not user.is_active or not _staff_ok(user):
-        return JsonResponse({"detail": HUB_CREDENTIALS_ERROR}, status=400)
-    login(request, user)
-    return JsonResponse(session_payload(request, user))
+        actor = consume_monitor_password(
+            email=data.get("email"),
+            password=data.get("password"),
+        )
+    except ValueError as exc:
+        return JsonResponse({"detail": str(exc)}, status=400)
+    _login_actor(request, actor)
+    return JsonResponse(session_payload(request, actor.user))
 
 
 @require_POST
@@ -279,7 +325,8 @@ def logout_view(request):
 
 @require_POST
 def change_password(request):
-    if not _staff_ok(request.user):
+    operator = current_operator(request)
+    if not operator and not is_hub_admin(request):
         return JsonResponse({"detail": "No autorizado"}, status=401)
     data = _json_body(request)
     if data is None:
@@ -287,6 +334,20 @@ def change_password(request):
     current = (data.get("current_password") or "").strip()
     if not current:
         return JsonResponse({"detail": PASSWORD_CHANGE_REQUIRED}, status=400)
+    if operator:
+        if not operator.check_password(current):
+            return JsonResponse({"detail": CURRENT_PASSWORD_ERROR}, status=400)
+        try:
+            new_password = validate_new_password(
+                data.get("password"),
+                data.get("password2"),
+                user=operator.user,
+            )
+        except ValueError as exc:
+            return JsonResponse({"detail": str(exc)}, status=400)
+        operator.set_password(new_password)
+        operator.save(update_fields=["password_hash"])
+        return JsonResponse({"ok": True, "detail": PASSWORD_UPDATED})
     if not request.user.check_password(current):
         return JsonResponse({"detail": CURRENT_PASSWORD_ERROR}, status=400)
     try:
@@ -303,9 +364,84 @@ def change_password(request):
     return JsonResponse({"ok": True, "detail": PASSWORD_UPDATED})
 
 
+def _update_operator_hub_profile(request, operator):
+    data = _json_body(request)
+    if data is None:
+        return JsonResponse({"detail": "JSON inválido"}, status=400)
+    try:
+        first_name, last_name, email = validate_profile_fields(
+            first_name=data.get("first_name", operator.first_name),
+            last_name=data.get("last_name", operator.last_name),
+            email=data.get("email", operator.email),
+            exclude_operator_id=operator.pk,
+        )
+    except ValueError as exc:
+        return JsonResponse({"detail": str(exc)}, status=400)
+    email_changed = (operator.email or "").strip().lower() != email
+    operator.first_name = first_name
+    operator.last_name = last_name
+    try:
+        operator.save(update_fields=["first_name", "last_name"])
+    except IntegrityError:
+        return JsonResponse({"detail": OPERATOR_EMAIL_TAKEN}, status=400)
+    user = operator.user
+    if user:
+        user.first_name = first_name
+        user.last_name = last_name
+        user.save(update_fields=["first_name", "last_name"])
+    if not email_changed:
+        EmailChangeChallenge.objects.filter(operator=operator).delete()
+        payload = session_payload(request, request.user)
+        payload["detail"] = PROFILE_UPDATED
+        return JsonResponse(payload)
+    try:
+        result = issue_email_change_otp(
+            email=email,
+            name=first_name or operator.display_name(),
+            operator=operator,
+        )
+    except ValueError as exc:
+        return JsonResponse({"detail": str(exc)}, status=400)
+    payload = session_payload(request, request.user)
+    payload.update(result)
+    return JsonResponse(payload)
+
+
+def _verify_operator_hub_email(request, operator):
+    data = _json_body(request)
+    if data is None:
+        return JsonResponse({"detail": "JSON inválido"}, status=400)
+    try:
+        challenge = consume_email_change_otp(
+            email=data.get("email"),
+            otp=data.get("otp"),
+            operator=operator,
+        )
+        assert_email_available(challenge.email, exclude_operator_id=operator.pk)
+    except ValueError as exc:
+        return JsonResponse({"detail": str(exc)}, status=400)
+    operator.email = challenge.email
+    try:
+        with transaction.atomic():
+            operator.save(update_fields=["email"])
+            user = operator.user
+            if user:
+                user.email = challenge.email
+                user.save(update_fields=["email"])
+            challenge.delete()
+    except IntegrityError:
+        return JsonResponse({"detail": OPERATOR_EMAIL_TAKEN}, status=400)
+    payload = session_payload(request, request.user)
+    payload["detail"] = PROFILE_UPDATED
+    return JsonResponse(payload)
+
+
 @require_http_methods(["PATCH"])
 def update_profile(request):
-    if not _staff_ok(request.user):
+    operator = current_operator(request)
+    if operator:
+        return _update_operator_hub_profile(request, operator)
+    if not is_hub_admin(request):
         return JsonResponse({"detail": "No autorizado"}, status=401)
     data = _json_body(request)
     if data is None:
@@ -344,7 +480,10 @@ def update_profile(request):
 
 @require_POST
 def verify_profile_email(request):
-    if not _staff_ok(request.user):
+    operator = current_operator(request)
+    if operator:
+        return _verify_operator_hub_email(request, operator)
+    if not is_hub_admin(request):
         return JsonResponse({"detail": "No autorizado"}, status=401)
     data = _json_body(request)
     if data is None:
@@ -374,8 +513,8 @@ def verify_profile_email(request):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def select_company(request):
-    if not _staff_ok(request.user):
-        return Response({"detail": "No autorizado"}, status=status.HTTP_401_UNAUTHORIZED)
+    if not is_hub_admin(request):
+        return Response({"detail": "No autorizado"}, status=status.HTTP_403_FORBIDDEN)
     company_id = request.data.get("company_id")
     company = companies_for(request.user).filter(pk=company_id).first()
     if not company:
@@ -387,8 +526,8 @@ def select_company(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def salud(request):
-    if not _staff_ok(request.user):
-        return Response({"detail": "No autorizado"}, status=status.HTTP_401_UNAUTHORIZED)
+    if not is_hub_admin(request):
+        return Response({"detail": "No autorizado"}, status=status.HTTP_403_FORBIDDEN)
     company = current_company(request)
     if not company:
         return Response({"detail": "No hay empresa activa."}, status=status.HTTP_404_NOT_FOUND)
@@ -400,7 +539,7 @@ class TenantViewSet(viewsets.ModelViewSet):
 
     def initial(self, request, *args, **kwargs):
         super().initial(request, *args, **kwargs)
-        if not _staff_ok(request.user):
+        if not is_hub_admin(request):
             self.permission_denied(request, message="No autorizado")
         self.company = current_company(request)
 
@@ -417,6 +556,11 @@ class TenantViewSet(viewsets.ModelViewSet):
 class CompanyViewSet(viewsets.ModelViewSet):
     serializer_class = CompanySerializer
     http_method_names = ["get", "post", "head", "options"]
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        if not is_hub_admin(request):
+            self.permission_denied(request, message="No autorizado")
 
     def get_queryset(self):
         return companies_for(self.request.user)
@@ -584,11 +728,16 @@ class OperatorViewSet(TenantViewSet):
 
 class BeatTypeViewSet(TenantViewSet):
     serializer_class = BeatTypeSerializer
+    http_method_names = ["get", "post", "put", "patch", "head", "options"]
 
     def get_queryset(self):
         if not self.company:
             return BeatType.objects.none()
         return BeatType.objects.filter(company=self.company)
+
+    def perform_update(self, serializer):
+        assert_company_writable(self.company)
+        serializer.save()
 
 
 class SystemViewSet(TenantViewSet):
@@ -618,10 +767,28 @@ class BeatViewSet(TenantViewSet):
     serializer_class = BeatSerializer
     http_method_names = ["get", "head", "options"]
 
+    def initial(self, request, *args, **kwargs):
+        super(TenantViewSet, self).initial(request, *args, **kwargs)
+        if is_hub_admin(request):
+            self.company = current_company(request)
+            self.hub_operator = None
+            return
+        operator = current_operator(request)
+        if operator:
+            self.company = operator.company
+            self.hub_operator = operator
+            return
+        self.permission_denied(request, message="No autorizado")
+
     def get_queryset(self):
         if not self.company:
             return Beat.objects.none()
-        return Beat.objects.filter(company=self.company).select_related("system", "beat_type")
+        if self.hub_operator:
+            actor = MonitorActor.from_operator(self.hub_operator)
+            return beats_visible_to_actor(actor)
+        return Beat.objects.filter(company=self.company).select_related(
+            "system", "beat_type"
+        )
 
 
 @api_view(["POST"])
@@ -932,6 +1099,19 @@ def monitor_beats(request):
     actor = request.auth
     beats = beats_visible_to_actor(actor)[:100]
     return Response([beat_payload(beat) for beat in beats])
+
+
+@api_view(["GET"])
+@authentication_classes([OperatorTokenAuthentication])
+@permission_classes([IsOperatorToken])
+def monitor_stats(request):
+    actor = request.auth
+    return Response(
+        beat_stats_payload(
+            beats=beats_visible_to_actor(actor),
+            types=types_visible_to_actor(actor),
+        )
+    )
 
 
 @api_view(["GET"])

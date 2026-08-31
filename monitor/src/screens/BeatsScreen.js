@@ -9,7 +9,10 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { StatusBar } from "expo-status-bar";
 import { colors } from "../theme";
-import { listOperatorBeats, monitorWsUrl } from "../api";
+import { listOperatorBeats, listOperatorStats, monitorWsUrl } from "../api";
+import BeatCharts from "../components/BeatCharts";
+import { BeatMarks } from "../components/BeatIcons";
+import { severityLabel } from "../severity";
 
 function formatWhen(value) {
   if (!value) return "";
@@ -22,14 +25,21 @@ function formatWhen(value) {
 
 export default function BeatsScreen({ session, onLogout, onProfile }) {
   const [items, setItems] = useState([]);
+  const [stats, setStats] = useState(null);
   const [live, setLive] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
-    listOperatorBeats(session.token)
-      .then((data) => {
-        if (!cancelled) setItems(Array.isArray(data) ? data : []);
+    Promise.all([
+      listOperatorBeats(session.token),
+      listOperatorStats(session.token),
+    ])
+      .then(([data, nextStats]) => {
+        if (!cancelled) {
+          setItems(Array.isArray(data) ? data : []);
+          setStats(nextStats);
+        }
       })
       .catch((err) => {
         if (err.status === 401) {
@@ -64,6 +74,9 @@ export default function BeatsScreen({ session, onLogout, onProfile }) {
             if (prev.some((item) => item.id === data.beat.id)) return prev;
             return [data.beat, ...prev];
           });
+          listOperatorStats(session.token)
+            .then(setStats)
+            .catch(() => {});
         }
       };
       socket.onerror = () => {};
@@ -124,14 +137,21 @@ export default function BeatsScreen({ session, onLogout, onProfile }) {
         data={items}
         keyExtractor={(item) => String(item.id)}
         contentContainerStyle={styles.list}
+        ListHeaderComponent={
+          stats ? <BeatCharts stats={stats} /> : null
+        }
         ListEmptyComponent={
           <Text style={styles.empty}>Aún no hay Beats.</Text>
         }
         renderItem={({ item }) => (
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>{item.title}</Text>
+            <View style={styles.cardTop}>
+              <BeatMarks item={item} />
+              <Text style={styles.cardTitle}>{item.title}</Text>
+            </View>
             <Text style={styles.muted}>
-              {item.system_name} · {item.beat_type_name}
+              {item.system_name} · {item.beat_type_name} ·{" "}
+              {item.severity_label || severityLabel(item.severity)}
             </Text>
             <Text style={styles.when}>{formatWhen(item.created_at)}</Text>
           </View>
@@ -210,11 +230,17 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     padding: 16,
   },
+  cardTop: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    marginBottom: 6,
+  },
   cardTitle: {
     color: colors.text,
     fontSize: 17,
     fontWeight: "600",
-    marginBottom: 6,
+    flex: 1,
   },
   when: {
     color: colors.muted,

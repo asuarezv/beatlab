@@ -11,6 +11,7 @@ export default function Shell({ session, onSession, children }) {
   }
 
   const company = session.current_company;
+  const isOperator = session.role === "operator";
 
   return (
     <div className="wrap">
@@ -18,7 +19,7 @@ export default function Shell({ session, onSession, children }) {
         <div>
           <p className="eyebrow">BeatLab</p>
           <h1>Hub{company ? ` · ${company.name}` : ""}</h1>
-          {company?.trial_active ? (
+          {!isOperator && company?.trial_active ? (
             <p className="muted">
               Demo · {company.trial_days_left} día
               {company.trial_days_left === 1 ? "" : "s"} ·{" "}
@@ -28,15 +29,26 @@ export default function Shell({ session, onSession, children }) {
           ) : null}
         </div>
         <nav>
-          <NavLink to="/" end>
-            Salud
-          </NavLink>
-          <NavLink to="/systems">Systems</NavLink>
-          <NavLink to="/operators">Operators</NavLink>
-          <NavLink to="/tipos">Tipos</NavLink>
-          <NavLink to="/beats">Beats</NavLink>
-          <NavLink to="/glosario">Glosario</NavLink>
-          <NavLink to="/perfil">Perfil</NavLink>
+          {isOperator ? (
+            <>
+              <NavLink to="/" end>
+                Monitoreo
+              </NavLink>
+              <NavLink to="/perfil">Perfil</NavLink>
+            </>
+          ) : (
+            <>
+              <NavLink to="/" end>
+                Salud
+              </NavLink>
+              <NavLink to="/systems">Systems</NavLink>
+              <NavLink to="/operators">Operators</NavLink>
+              <NavLink to="/tipos">Tipos</NavLink>
+              <NavLink to="/beats">Beats</NavLink>
+              <NavLink to="/glosario">Glosario</NavLink>
+              <NavLink to="/perfil">Perfil</NavLink>
+            </>
+          )}
           <button type="button" onClick={handleLogout}>
             Salir
           </button>

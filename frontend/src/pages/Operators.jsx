@@ -311,6 +311,11 @@ export default function Operators() {
                   onChange={() => toggleType(type.id)}
                 />
                 {type.name}
+                {type.severity_label ? (
+                  <span className={`sev-badge sev-${type.severity}`}>
+                    {type.severity_label}
+                  </span>
+                ) : null}
               </label>
             ))}
             {!types.length ? (

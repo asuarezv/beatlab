@@ -31,6 +31,7 @@ urlpatterns = [
     path("monitor/auth/verify-email/", views.monitor_verify_email, name="monitor-verify-email"),
     path("monitor/auth/password/", views.monitor_password, name="monitor-password"),
     path("monitor/beats/", views.monitor_beats, name="monitor-beats"),
+    path("monitor/stats/", views.monitor_stats, name="monitor-stats"),
     path(
         "public/operator/invite/",
         views.public_operator_invite_info,

@@ -24,7 +24,6 @@ from .validation import (
     HUB_LOGIN_REQUIRED,
     MONITOR_CREDENTIALS_ERROR,
     MONITOR_LOGIN_REQUIRED,
-    OPERATOR_ACCOUNT_ON_HUB,
     OPERATOR_ACTIVATE_OK,
     OPERATOR_EMAIL_TAKEN,
     OPERATOR_INVITE_SENT,
@@ -623,6 +622,7 @@ class IngestAndMonitorTests(CompanyFixtureTests):
         )
         self.assertEqual(ok.status_code, 200)
         self.assertEqual(ok.json()["user"]["email"], "hubadmin@labbe.test")
+        self.assertEqual(ok.json()["role"], "admin")
         self.client.logout()
         by_username = self.client.post(
             "/api/auth/login/",
@@ -640,17 +640,36 @@ class IngestAndMonitorTests(CompanyFixtureTests):
         self.assertEqual(invalid.status_code, 400)
         self.assertEqual(invalid.json()["detail"], EMAIL_INVALID)
 
-    def test_hub_login_rejects_operator_account(self):
-        by_email = self.client.post(
+    def test_hub_login_accepts_operator_password_hash(self):
+        by_user_password = self.client.post(
             "/api/auth/login/",
             {"email": "op@labbe.test", "password": "password12"},
             format="json",
         )
-        self.assertEqual(by_email.status_code, 400)
-        self.assertEqual(by_email.json()["detail"], OPERATOR_ACCOUNT_ON_HUB)
+        self.assertEqual(by_user_password.status_code, 400)
+        self.assertEqual(by_user_password.json()["detail"], HUB_CREDENTIALS_ERROR)
+        self.assertFalse(by_user_password.wsgi_request.user.is_authenticated)
+        self.operator.set_password("OperatorClave99")
+        self.operator.save(update_fields=["password_hash"])
+        ok = self.client.post(
+            "/api/auth/login/",
+            {"email": "OP@labbe.test", "password": "OperatorClave99"},
+            format="json",
+        )
+        self.assertEqual(ok.status_code, 200)
+        self.assertEqual(ok.json()["role"], "operator")
+        self.assertEqual(ok.json()["user"]["email"], "op@labbe.test")
+        self.assertEqual(ok.json()["user"]["first_name"], "Ana")
+        self.assertEqual(ok.json()["user"]["last_name"], "Pérez")
+        self.assertEqual(ok.json()["current_company"]["id"], self.company.id)
+        me = self.client.get("/api/auth/me/")
+        self.assertEqual(me.status_code, 200)
+        self.assertEqual(me.json()["role"], "operator")
+        self.assertEqual(me.json()["user"]["display_name"], "Ana Pérez")
+        self.client.logout()
         by_username = self.client.post(
             "/api/auth/login/",
-            {"username": "opdemo", "password": "password12"},
+            {"username": "opdemo", "password": "OperatorClave99"},
             format="json",
         )
         self.assertEqual(by_username.status_code, 400)
@@ -1157,3 +1176,212 @@ class BeatAssignmentTests(CompanyFixtureTests):
         await assigned.disconnect()
         await skipped.disconnect()
         await admin.disconnect()
+
+
+class HubOperatorWebTests(CompanyFixtureTests):
+    def setUp(self):
+        super().setUp()
+        self.aviso = BeatType.objects.create(
+            company=self.company,
+            name="Aviso",
+            slug="aviso",
+        )
+        self.operator.set_password("OperatorClave99")
+        self.operator.save(update_fields=["password_hash"])
+
+    def _operator_hub_login(self):
+        response = self.client.post(
+            "/api/auth/login/",
+            {"email": "op@labbe.test", "password": "OperatorClave99"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["role"], "operator")
+        return response
+
+    def test_operator_cannot_access_admin_apis(self):
+        self._operator_hub_login()
+        forbidden = [
+            ("/api/salud/", "get"),
+            ("/api/companies/", "get"),
+            ("/api/systems/", "get"),
+            ("/api/operators/", "get"),
+            ("/api/beat-types/", "get"),
+            (f"/api/systems/{self.system.id}/jwt/", "post"),
+        ]
+        for path, method in forbidden:
+            response = getattr(self.client, method)(path, {}, format="json")
+            self.assertEqual(response.status_code, 403, path)
+        ingest = self.client.post(
+            "/api/ingest/beats/",
+            {"type": "alerta", "title": "No"},
+            format="json",
+        )
+        self.assertEqual(ingest.status_code, 401)
+
+    def test_operator_beats_are_filtered_by_assignment(self):
+        self.operator.assigned_beat_types.set([self.aviso])
+        self.operator.receive_all_beat_types = False
+        self.operator.save(update_fields=["receive_all_beat_types"])
+        self._ingest()
+        self._ingest(body={"type": "aviso", "title": "Disco lleno"})
+        self._operator_hub_login()
+        listed = self.client.get("/api/beats/")
+        self.assertEqual(listed.status_code, 200)
+        self.assertEqual([item["title"] for item in listed.data], ["Disco lleno"])
+
+    def test_admin_hub_nav_unchanged(self):
+        self._hub_session()
+        salud = self.client.get("/api/salud/")
+        self.assertEqual(salud.status_code, 200)
+        systems = self.client.get("/api/systems/")
+        self.assertEqual(systems.status_code, 200)
+        me = self.client.get("/api/auth/me/")
+        self.assertEqual(me.json()["role"], "admin")
+
+    async def test_monitor_websocket_accepts_operator_hub_session(self):
+        from asgiref.sync import sync_to_async
+        from channels.testing import WebsocketCommunicator
+
+        from config.asgi import application
+
+        login = await sync_to_async(self.client.post)(
+            "/api/auth/login/",
+            {"email": "op@labbe.test", "password": "OperatorClave99"},
+            format="json",
+        )
+        self.assertEqual(login.status_code, 200)
+        session_key = self.client.cookies["sessionid"].value
+        communicator = WebsocketCommunicator(
+            application,
+            "/ws/monitor/",
+            headers=[
+                (b"cookie", f"sessionid={session_key}".encode()),
+            ],
+        )
+        connected, _ = await communicator.connect()
+        self.assertTrue(connected)
+        hello = await communicator.receive_json_from()
+        self.assertEqual(hello.get("type"), "ready")
+        await communicator.disconnect()
+
+
+class SeverityAndStatsTests(CompanyFixtureTests):
+    def test_existing_type_defaults_to_aviso(self):
+        self.assertEqual(self.beat_type.severity, BeatType.Severity.AVISO)
+        self.assertEqual(self.beat_type.resolved_icon(), "alert")
+
+    def test_create_and_patch_beat_type_severity_and_icon(self):
+        self._hub_session()
+        created = self.client.post(
+            "/api/beat-types/",
+            {"name": "Caída crítica", "severity": "critica", "icon": "error"},
+            format="json",
+        )
+        self.assertEqual(created.status_code, 201)
+        self.assertEqual(created.data["severity"], "critica")
+        self.assertEqual(created.data["icon"], "error")
+        patched = self.client.patch(
+            f"/api/beat-types/{created.data['id']}/",
+            {"severity": "info", "icon": "pulse"},
+            format="json",
+        )
+        self.assertEqual(patched.status_code, 200)
+        self.assertEqual(patched.data["severity"], "info")
+        invalid = self.client.post(
+            "/api/beat-types/",
+            {"name": "Raro", "severity": "urgente"},
+            format="json",
+        )
+        self.assertEqual(invalid.status_code, 400)
+
+    def test_ingest_and_lists_include_severity(self):
+        self.beat_type.severity = BeatType.Severity.CRITICA
+        self.beat_type.icon = "error"
+        self.beat_type.save(update_fields=["severity", "icon"])
+        ingested = self._ingest()
+        self.assertEqual(ingested.status_code, 201)
+        self.assertEqual(ingested.data["severity"], "critica")
+        self.assertEqual(ingested.data["beat_type_icon"], "error")
+        self._hub_session()
+        listed = self.client.get("/api/beats/")
+        rows = listed.data if isinstance(listed.data, list) else listed.data["results"]
+        self.assertEqual(rows[0]["severity"], "critica")
+        token = self._operator_token()
+        monitor = self.client.get(
+            "/api/monitor/beats/",
+            HTTP_AUTHORIZATION=f"Bearer {token}",
+        )
+        self.assertEqual(monitor.data[0]["severity"], "critica")
+
+    def test_salud_and_monitor_stats_are_tenant_and_assignment_scoped(self):
+        other = Company.objects.create(name="Otra", slug="otra-stats")
+        grant_demo(other)
+        other_type = BeatType.objects.create(
+            company=other, name="Error", slug="error", severity="critica"
+        )
+        other_system = System.objects.create(company=other, name="Job", slug="job")
+        Beat.objects.create(
+            company=other,
+            system=other_system,
+            beat_type=other_type,
+            title="Ajeno",
+        )
+        aviso = BeatType.objects.create(
+            company=self.company,
+            name="Aviso",
+            slug="aviso",
+            severity="aviso",
+            icon="bell",
+        )
+        self._ingest()
+        Beat.objects.create(
+            company=self.company,
+            system=self.system,
+            beat_type=aviso,
+            title="Aviso propio",
+        )
+        self.operator.receive_all_beat_types = False
+        self.operator.save(update_fields=["receive_all_beat_types"])
+        self.operator.assigned_beat_types.set([aviso])
+        self._hub_session()
+        salud = self.client.get("/api/salud/")
+        self.assertEqual(salud.status_code, 200)
+        self.assertEqual(salud.data["beats_total"], 2)
+        names = {row["name"] for row in salud.data["by_type"]}
+        self.assertIn("Alerta", names)
+        self.assertNotIn("Error", names)
+        self.assertEqual(len(salud.data["by_day"]), 14)
+        token = self._operator_token()
+        monitor = self.client.get(
+            "/api/monitor/stats/",
+            HTTP_AUTHORIZATION=f"Bearer {token}",
+        )
+        self.assertEqual(monitor.status_code, 200)
+        self.assertEqual(monitor.data["beats_total"], 1)
+        self.assertEqual(monitor.data["by_type"][0]["name"], "Aviso")
+
+
+class SeedDemoBeatsTests(CompanyFixtureTests):
+    def test_seed_completes_types_and_beats_without_emptying_quota(self):
+        from django.core.management import call_command
+
+        self.beat_type.severity = BeatType.Severity.INFO
+        self.beat_type.icon = "pulse"
+        self.beat_type.save(update_fields=["severity", "icon"])
+        remaining_before = self.company.beats_remaining()
+        call_command("seed_demo_beats", company="labbe-2")
+        self.beat_type.refresh_from_db()
+        self.assertEqual(self.beat_type.severity, BeatType.Severity.INFO)
+        self.assertEqual(self.beat_type.icon, "pulse")
+        self.assertEqual(self.company.beat_types.count(), 10)
+        self.assertEqual(self.company.beats.count(), 100)
+        self.company.refresh_from_db()
+        self.assertGreater(self.company.beats_remaining(), 0)
+        self.assertGreaterEqual(self.company.beats_remaining(), remaining_before - 1)
+        dates = {item.created_at.date() for item in self.company.beats.all()}
+        self.assertGreater(len(dates), 5)
+        call_command("seed_demo_beats", company="labbe-2")
+        self.assertEqual(self.company.beats.count(), 100)
+        self.assertEqual(self.company.beat_types.count(), 10)
+

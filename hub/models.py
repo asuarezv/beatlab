@@ -192,6 +192,37 @@ class EmailChangeChallenge(models.Model):
 
 
 class BeatType(models.Model):
+    class Severity(models.TextChoices):
+        INFO = "info", "Info"
+        AVISO = "aviso", "Aviso"
+        ALERTA = "alerta", "Alerta"
+        CRITICA = "critica", "Crítica"
+
+    ICONS = (
+        "pulse",
+        "alert",
+        "check",
+        "error",
+        "sync",
+        "cloud",
+        "server",
+        "shield",
+        "bell",
+        "activity",
+    )
+    ICON_CHOICES = (
+        ("pulse", "Pulso"),
+        ("alert", "Alerta"),
+        ("check", "Ok"),
+        ("error", "Error"),
+        ("sync", "Sincronía"),
+        ("cloud", "Nube"),
+        ("server", "Servidor"),
+        ("shield", "Escudo"),
+        ("bell", "Aviso"),
+        ("activity", "Actividad"),
+    )
+
     company = models.ForeignKey(
         Company,
         on_delete=models.CASCADE,
@@ -199,6 +230,12 @@ class BeatType(models.Model):
     )
     name = models.CharField(max_length=80)
     slug = models.SlugField()
+    severity = models.CharField(
+        max_length=16,
+        choices=Severity.choices,
+        default=Severity.AVISO,
+    )
+    icon = models.CharField(max_length=32, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -207,6 +244,26 @@ class BeatType(models.Model):
 
     def __str__(self) -> str:
         return self.name
+
+    def resolved_icon(self) -> str:
+        if self.icon in self.ICONS:
+            return self.icon
+        key = f"{self.slug} {self.name}".lower()
+        if any(token in key for token in ("error", "fallo", "fail", "crit")):
+            return "error"
+        if any(token in key for token in ("alerta", "alert", "warning", "aviso")):
+            return "alert"
+        if any(token in key for token in ("ok", "check", "listo", "healthy")):
+            return "check"
+        if any(token in key for token in ("sync", "job", "tarea")):
+            return "sync"
+        if any(token in key for token in ("cloud", "nube")):
+            return "cloud"
+        if any(token in key for token in ("server", "servidor")):
+            return "server"
+        if "info" in key:
+            return "activity"
+        return "pulse"
 
 
 class System(models.Model):

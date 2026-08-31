@@ -192,15 +192,32 @@ export function listBeatTypes() {
   return request("/api/beat-types/");
 }
 
-export function createBeatType(name) {
+export function createBeatType(payload) {
+  const body = typeof payload === "string" ? { name: payload } : payload;
   return request("/api/beat-types/", {
     method: "POST",
-    body: JSON.stringify({ name }),
+    body: JSON.stringify(body),
   });
+}
+
+export function updateBeatType(id, payload) {
+  return request(`/api/beat-types/${id}/`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function fetchBeatStats() {
+  return request("/api/beats/stats/");
 }
 
 export function listBeats() {
   return request("/api/beats/");
+}
+
+export function monitorWsUrl() {
+  const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+  return `${proto}//${window.location.host}/ws/monitor/`;
 }
 
 export function issueSystemJwt(systemId) {

@@ -167,10 +167,43 @@ class OperatorSerializer(serializers.ModelSerializer):
 
 
 class BeatTypeSerializer(serializers.ModelSerializer):
+    icon = serializers.CharField(required=False, allow_blank=True, default="")
+    resolved_icon = serializers.SerializerMethodField()
+    severity_label = serializers.SerializerMethodField()
+
     class Meta:
         model = BeatType
-        fields = ("id", "name", "slug", "created_at")
-        read_only_fields = ("id", "slug", "created_at")
+        fields = (
+            "id",
+            "name",
+            "slug",
+            "severity",
+            "severity_label",
+            "icon",
+            "resolved_icon",
+            "created_at",
+        )
+        read_only_fields = ("id", "slug", "severity_label", "resolved_icon", "created_at")
+
+    def get_resolved_icon(self, obj):
+        return obj.resolved_icon()
+
+    def get_severity_label(self, obj):
+        return obj.get_severity_display()
+
+    def validate_name(self, value):
+        name = (value or "").strip()
+        if not name:
+            raise serializers.ValidationError("El nombre del tipo es obligatorio.")
+        return name
+
+    def validate_icon(self, value):
+        icon = (value or "").strip()
+        if not icon:
+            return ""
+        if icon not in BeatType.ICONS:
+            raise serializers.ValidationError("El icono no es válido.")
+        return icon
 
     def create(self, validated_data):
         company = self.context["company"]
@@ -181,7 +214,13 @@ class BeatTypeSerializer(serializers.ModelSerializer):
         while BeatType.objects.filter(company=company, slug=slug).exists():
             slug = f"{base}-{index}"
             index += 1
-        return BeatType.objects.create(company=company, name=name, slug=slug)
+        return BeatType.objects.create(
+            company=company,
+            name=name,
+            slug=slug,
+            severity=validated_data.get("severity", BeatType.Severity.AVISO),
+            icon=validated_data.get("icon", ""),
+        )
 
 
 class SystemSerializer(serializers.ModelSerializer):
@@ -223,6 +262,12 @@ class SystemSerializer(serializers.ModelSerializer):
 class BeatSerializer(serializers.ModelSerializer):
     system_name = serializers.CharField(source="system.name", read_only=True)
     beat_type_name = serializers.CharField(source="beat_type.name", read_only=True)
+    beat_type_slug = serializers.CharField(source="beat_type.slug", read_only=True)
+    severity = serializers.CharField(source="beat_type.severity", read_only=True)
+    severity_label = serializers.CharField(
+        source="beat_type.get_severity_display", read_only=True
+    )
+    beat_type_icon = serializers.SerializerMethodField()
 
     class Meta:
         model = Beat
@@ -232,11 +277,27 @@ class BeatSerializer(serializers.ModelSerializer):
             "beat_type",
             "system_name",
             "beat_type_name",
+            "beat_type_slug",
+            "severity",
+            "severity_label",
+            "beat_type_icon",
             "title",
             "payload",
             "created_at",
         )
-        read_only_fields = ("id", "system_name", "beat_type_name", "created_at")
+        read_only_fields = (
+            "id",
+            "system_name",
+            "beat_type_name",
+            "beat_type_slug",
+            "severity",
+            "severity_label",
+            "beat_type_icon",
+            "created_at",
+        )
+
+    def get_beat_type_icon(self, obj):
+        return obj.beat_type.resolved_icon()
 
     def validate(self, attrs):
         company = self.context["company"]

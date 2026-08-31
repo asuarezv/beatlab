@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { issueSystemJwt, listBeats, listBeatTypes, listSystems } from "../api.js";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
+import { BeatMarks } from "../components/BeatIcons.jsx";
 
 const PUBLIC_INGEST = "https://hub.nynusoft.com/api/ingest/beats/";
 const POLL_MS = 4000;
@@ -209,13 +210,17 @@ export default function Beats() {
         {error ? <p className="error">{error}</p> : null}
         <ul className="list">
           {items.map((item) => (
-            <li key={item.id}>
-              <strong>{item.title}</strong>
-              <span className="muted">
-                {" "}
-                · {item.system_name} · {item.beat_type_name}
+            <li key={item.id} className="beat-item">
+              <BeatMarks item={item} />
+              <span>
+                <strong>{item.title}</strong>
+                <span className="muted">
+                  {" "}
+                  · {item.system_name} · {item.beat_type_name} ·{" "}
+                  {item.severity_label || item.severity}
+                </span>
+                <span className="muted beat-when"> {formatWhen(item.created_at)}</span>
               </span>
-              <span className="muted beat-when"> {formatWhen(item.created_at)}</span>
             </li>
           ))}
           {!items.length ? <li className="muted">Aún no hay Beats.</li> : null}

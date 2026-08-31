@@ -10,12 +10,17 @@ logger = logging.getLogger(__name__)
 
 
 def beat_payload(beat: Beat) -> dict:
+    beat_type = beat.beat_type
     return {
         "id": beat.id,
         "system": beat.system_id,
-        "beat_type": beat.beat_type_id,
+        "beat_type": beat_type.id,
         "system_name": beat.system.name,
-        "beat_type_name": beat.beat_type.name,
+        "beat_type_name": beat_type.name,
+        "beat_type_slug": beat_type.slug,
+        "severity": beat_type.severity,
+        "severity_label": beat_type.get_severity_display(),
+        "beat_type_icon": beat_type.resolved_icon(),
         "title": beat.title,
         "payload": beat.payload or {},
         "created_at": beat.created_at.isoformat(),

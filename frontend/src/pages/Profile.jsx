@@ -254,10 +254,12 @@ export default function Profile({ session, onSession }) {
           autoComplete="on"
         >
           <h3>Datos de la cuenta</h3>
-          <div className="profile-readonly">
-            <span>Usuario</span>
-            <strong>{user.username || "—"}</strong>
-          </div>
+          {session?.role === "operator" ? null : (
+            <div className="profile-readonly">
+              <span>Usuario</span>
+              <strong>{user.username || "—"}</strong>
+            </div>
+          )}
           {step === "otp" ? (
             <>
               <p className="muted profile-readonly-hint">
@@ -309,8 +311,9 @@ export default function Profile({ session, onSession }) {
           ) : (
             <>
               <p className="muted profile-readonly-hint">
-                El usuario no se cambia. El nombre y los apellidos se guardan al
-                momento. El correo nuevo se confirma con un código.
+                {session?.role === "operator"
+                  ? "El nombre y los apellidos se guardan al momento. El correo nuevo se confirma con un código."
+                  : "El usuario no se cambia. El nombre y los apellidos se guardan al momento. El correo nuevo se confirma con un código."}
               </p>
               <label>
                 Nombre <span className="req">*</span>

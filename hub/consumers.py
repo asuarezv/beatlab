@@ -3,15 +3,38 @@ from urllib.parse import parse_qs
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 
+from .models import Operator
 from .notify import company_admin_group, operator_group
-from .tokens import MONITOR_ROLE_ADMIN, verify_monitor_token
+from .tokens import MONITOR_ROLE_ADMIN, MONITOR_ROLE_OPERATOR, MonitorActor, verify_monitor_token
+
+
+def _actor_from_scope(scope):
+    qs = parse_qs((scope.get("query_string") or b"").decode())
+    token = (qs.get("token") or [""])[0]
+    if token:
+        return verify_monitor_token(token)
+    session = scope.get("session")
+    user = scope.get("user")
+    if session is None or user is None or not getattr(user, "is_authenticated", False):
+        return None
+    if session.get("hub_role") != MONITOR_ROLE_OPERATOR:
+        return None
+    operator_id = session.get("operator_id")
+    if not operator_id:
+        return None
+    operator = (
+        Operator.objects.filter(pk=operator_id, user_id=user.pk)
+        .select_related("user", "company")
+        .first()
+    )
+    if operator is None:
+        return None
+    return MonitorActor.from_operator(operator)
 
 
 class MonitorConsumer(AsyncJsonWebsocketConsumer):
     async def connect(self):
-        qs = parse_qs((self.scope.get("query_string") or b"").decode())
-        token = (qs.get("token") or [""])[0]
-        actor = await database_sync_to_async(verify_monitor_token)(token)
+        actor = await database_sync_to_async(_actor_from_scope)(self.scope)
         if actor is None:
             await self.close(code=4401)
             return

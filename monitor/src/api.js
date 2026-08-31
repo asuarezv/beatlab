@@ -182,3 +182,16 @@ export function listOperatorBeats(token) {
     })
     .then(readJson);
 }
+
+export function listOperatorStats(token) {
+  return fetch(`${hubUrl()}/api/monitor/stats/`, {
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+  })
+    .catch(() => {
+      throw contactHubError();
+    })
+    .then(readJson);
+}

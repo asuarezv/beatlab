@@ -39,7 +39,14 @@ export default function Consumo() {
       <ul className="list">
         {stats.by_type.map((item) => (
           <li key={item.id} className="consumo-row">
-            <span>{item.name}</span>
+            <span>
+              {item.name}
+              {item.severity_label ? (
+                <span className={`sev-badge sev-${item.severity}`}>
+                  {item.severity_label}
+                </span>
+              ) : null}
+            </span>
             <strong>{formatNumber(item.consumed)}</strong>
           </li>
         ))}
