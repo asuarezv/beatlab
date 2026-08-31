@@ -22,7 +22,6 @@ import OtpInput from "../components/OtpInput";
 import PasswordField from "../components/PasswordField";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const USERNAME_RE = /^[A-Za-z0-9]+$/;
 
 export default function LoginScreen({ onLogin }) {
   const [email, setEmail] = useState("");
@@ -42,7 +41,7 @@ export default function LoginScreen({ onLogin }) {
     });
   }
 
-  function validEmail(nextEmail, { forOtp = false } = {}) {
+  function validEmail(nextEmail) {
     if (!nextEmail) {
       setError("El correo es obligatorio.");
       return false;
@@ -50,10 +49,7 @@ export default function LoginScreen({ onLogin }) {
     if (EMAIL_RE.test(nextEmail)) {
       return true;
     }
-    if (!forOtp && USERNAME_RE.test(nextEmail)) {
-      return true;
-    }
-    setError(forOtp ? "El correo no es válido." : "El correo o el usuario no es válido.");
+    setError("El correo no es válido.");
     return false;
   }
 
@@ -83,7 +79,7 @@ export default function LoginScreen({ onLogin }) {
   async function handleRequest() {
     const nextEmail = email.trim();
     setEmail(nextEmail);
-    if (!validEmail(nextEmail, { forOtp: true })) {
+    if (!validEmail(nextEmail)) {
       return;
     }
     setError("");
@@ -146,11 +142,18 @@ export default function LoginScreen({ onLogin }) {
               Entra con tu correo y contraseña, o te enviamos un código de 6
               dígitos.
             </Text>
-            <Text style={styles.label}>Correo o usuario</Text>
+            <Text style={styles.label}>Correo</Text>
             <TextInput
-              style={styles.input}
+              style={[
+                styles.input,
+                Boolean(email.trim()) && !EMAIL_RE.test(email.trim())
+                  ? styles.inputInvalid
+                  : null,
+              ]}
               value={email}
               onChangeText={setEmail}
+              placeholder="Correo"
+              placeholderTextColor={colors.muted}
               autoCapitalize="none"
               autoCorrect={false}
               keyboardType="email-address"
@@ -291,6 +294,9 @@ const styles = StyleSheet.create({
     color: colors.text,
     paddingHorizontal: 12,
     paddingVertical: 12,
+  },
+  inputInvalid: {
+    borderColor: colors.danger,
   },
   error: {
     color: colors.danger,

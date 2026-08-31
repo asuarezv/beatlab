@@ -1,43 +1,38 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { login } from "../api.js";
-import {
-  EMAIL_ERROR,
-  USERNAME_ERROR,
-  isValidEmail,
-  isValidUsername,
-  sanitizeUsername,
-} from "../fieldRules.js";
+import { EMAIL_ERROR, isValidEmail } from "../fieldRules.js";
 
 export default function Login({ onLogin }) {
-  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
+  const [emailBlurred, setEmailBlurred] = useState(false);
+
+  const emailInvalid = Boolean(email) && !isValidEmail(email.trim());
 
   async function handleSubmit(event) {
     event.preventDefault();
-    const user = username;
+    const nextEmail = email.trim();
     const pass = password.trim();
-    setUsername(user);
+    setEmail(nextEmail);
     setPassword(pass);
-    if (!user || !pass) {
-      setError("Usuario y contraseña son obligatorios.");
+    if (nextEmail) {
+      setEmailBlurred(true);
+    }
+    if (!nextEmail || !pass) {
+      setError("El correo y la contraseña son obligatorios.");
       return;
     }
-    if (user.includes("@")) {
-      if (!isValidEmail(user)) {
-        setError(EMAIL_ERROR);
-        return;
-      }
-    } else if (!isValidUsername(user)) {
-      setError(USERNAME_ERROR);
+    if (!isValidEmail(nextEmail)) {
+      setError(EMAIL_ERROR);
       return;
     }
     setError("");
     setPending(true);
     try {
-      const data = await login(user, pass);
+      const data = await login(nextEmail, pass);
       onLogin(data);
     } catch (err) {
       setError(err.message);
@@ -53,15 +48,16 @@ export default function Login({ onLogin }) {
       </p>
       <h1>Entrar al Hub</h1>
       <label>
-        Usuario o correo
+        Correo
         <input
-          name="username"
-          autoComplete="username"
-          value={username}
-          onChange={(e) => {
-            const value = e.target.value;
-            setUsername(value.includes("@") ? value : sanitizeUsername(value));
-          }}
+          name="email"
+          type="email"
+          autoComplete="email"
+          placeholder="Correo"
+          value={email}
+          className={emailBlurred && emailInvalid ? "invalid" : undefined}
+          onChange={(e) => setEmail(e.target.value)}
+          onBlur={() => setEmailBlurred(true)}
           required
         />
       </label>

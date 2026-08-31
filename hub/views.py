@@ -7,6 +7,8 @@ from django.contrib.auth import (
     logout,
     update_session_auth_hash,
 )
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.validators import validate_email
 from django.db import IntegrityError, transaction
 from django.http import JsonResponse
 from django.middleware.csrf import get_token
@@ -56,16 +58,17 @@ from .otp import (
 )
 from .validation import (
     CURRENT_PASSWORD_ERROR,
+    EMAIL_INVALID,
+    HUB_CREDENTIALS_ERROR,
     HUB_EMAIL_TAKEN,
+    HUB_LOGIN_REQUIRED,
     OPERATOR_ACCOUNT_ON_HUB,
     OPERATOR_EMAIL_TAKEN,
     PASSWORD_CHANGE_REQUIRED,
     PASSWORD_CREATED,
     PASSWORD_UPDATED,
     PROFILE_UPDATED,
-    USERNAME_ERROR,
     assert_email_available,
-    is_valid_username,
     validate_new_password,
     validate_profile_fields,
 )
@@ -160,22 +163,23 @@ def login_view(request):
     data = _json_body(request)
     if data is None:
         return JsonResponse({"detail": "JSON inválido"}, status=400)
-    username = (data.get("username") or "").strip()
+    email = (data.get("email") or "").strip()
     password = (data.get("password") or "").strip()
-    if not username or not password:
-        return JsonResponse({"detail": "Usuario y contraseña son obligatorios."}, status=400)
-    if "@" in username:
-        operator = (
-            Operator.objects.filter(email__iexact=username)
-            .select_related("user")
-            .first()
-        )
-        if operator and not _staff_ok(operator.user):
-            return JsonResponse({"detail": OPERATOR_ACCOUNT_ON_HUB}, status=400)
-        return JsonResponse({"detail": "Usuario o contraseña no válidos"}, status=400)
-    if not is_valid_username(username):
-        return JsonResponse({"detail": USERNAME_ERROR}, status=400)
-    stored = User.objects.filter(username__iexact=username).first()
+    if not email or not password:
+        return JsonResponse({"detail": HUB_LOGIN_REQUIRED}, status=400)
+    email = email.lower()
+    try:
+        validate_email(email)
+    except DjangoValidationError:
+        return JsonResponse({"detail": EMAIL_INVALID}, status=400)
+    operator = (
+        Operator.objects.filter(email__iexact=email)
+        .select_related("user")
+        .first()
+    )
+    if operator and not _staff_ok(operator.user):
+        return JsonResponse({"detail": OPERATOR_ACCOUNT_ON_HUB}, status=400)
+    stored = User.objects.filter(email__iexact=email).first()
     if (
         stored
         and not _staff_ok(stored)
@@ -184,11 +188,11 @@ def login_view(request):
         return JsonResponse({"detail": OPERATOR_ACCOUNT_ON_HUB}, status=400)
     user = authenticate(
         request,
-        username=stored.username if stored else username,
+        username=stored.username if stored else email,
         password=password,
     )
     if user is None or not user.is_active or not _staff_ok(user):
-        return JsonResponse({"detail": "Usuario o contraseña no válidos"}, status=400)
+        return JsonResponse({"detail": HUB_CREDENTIALS_ERROR}, status=400)
     login(request, user)
     return JsonResponse(session_payload(request, user))
 

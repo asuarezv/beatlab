@@ -19,6 +19,9 @@ from .tenant import ensure_membership
 from .tokens import MonitorActor, issue_monitor_jwt, issue_operator_jwt, issue_system_jwt
 from .validation import (
     CURRENT_PASSWORD_ERROR,
+    EMAIL_INVALID,
+    HUB_CREDENTIALS_ERROR,
+    HUB_LOGIN_REQUIRED,
     MONITOR_CREDENTIALS_ERROR,
     MONITOR_LOGIN_REQUIRED,
     OPERATOR_ACCOUNT_ON_HUB,
@@ -597,10 +600,35 @@ class IngestAndMonitorTests(APITestCase):
                     email="op@labbe.test",
                 )
 
+    def test_hub_login_accepts_email_and_rejects_username(self):
+        ok = self.client.post(
+            "/api/auth/login/",
+            {"email": "HUBADMIN@labbe.test", "password": "password12"},
+            format="json",
+        )
+        self.assertEqual(ok.status_code, 200)
+        self.assertEqual(ok.json()["user"]["email"], "hubadmin@labbe.test")
+        self.client.logout()
+        by_username = self.client.post(
+            "/api/auth/login/",
+            {"username": "hubadmin", "password": "password12"},
+            format="json",
+        )
+        self.assertEqual(by_username.status_code, 400)
+        self.assertEqual(by_username.json()["detail"], HUB_LOGIN_REQUIRED)
+        self.assertFalse(by_username.wsgi_request.user.is_authenticated)
+        invalid = self.client.post(
+            "/api/auth/login/",
+            {"email": "hubadmin", "password": "password12"},
+            format="json",
+        )
+        self.assertEqual(invalid.status_code, 400)
+        self.assertEqual(invalid.json()["detail"], EMAIL_INVALID)
+
     def test_hub_login_rejects_operator_account(self):
         by_email = self.client.post(
             "/api/auth/login/",
-            {"username": "op@labbe.test", "password": "password12"},
+            {"email": "op@labbe.test", "password": "password12"},
             format="json",
         )
         self.assertEqual(by_email.status_code, 400)
@@ -611,14 +639,14 @@ class IngestAndMonitorTests(APITestCase):
             format="json",
         )
         self.assertEqual(by_username.status_code, 400)
-        self.assertEqual(by_username.json()["detail"], OPERATOR_ACCOUNT_ON_HUB)
+        self.assertEqual(by_username.json()["detail"], HUB_LOGIN_REQUIRED)
         unknown = self.client.post(
             "/api/auth/login/",
-            {"username": "nadie", "password": "password12"},
+            {"email": "nadie@labbe.test", "password": "password12"},
             format="json",
         )
         self.assertEqual(unknown.status_code, 400)
-        self.assertEqual(unknown.json()["detail"], "Usuario o contraseña no válidos")
+        self.assertEqual(unknown.json()["detail"], HUB_CREDENTIALS_ERROR)
 
     def test_monitor_otp_allows_hub_admin(self):
         self._ingest()
@@ -780,8 +808,8 @@ class IngestAndMonitorTests(APITestCase):
             {"email": "hubadmin", "password": "password12"},
             format="json",
         )
-        self.assertEqual(by_username.status_code, 200)
-        self.assertEqual(by_username.data["role"], "admin")
+        self.assertEqual(by_username.status_code, 400)
+        self.assertEqual(by_username.data["detail"], EMAIL_INVALID)
         wrong_admin = self.client.post(
             "/api/monitor/auth/login/",
             {"email": "hubadmin@labbe.test", "password": "no-es-esa"},

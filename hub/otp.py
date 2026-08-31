@@ -32,6 +32,7 @@ from .tokens import MonitorActor
 from .validation import (
     COMPANY_NAME_ERROR,
     EMAIL_CHANGE_SENT,
+    EMAIL_INVALID,
     HUB_ACCOUNT_ON_MONITOR,
     MONITOR_CREDENTIALS_ERROR,
     MONITOR_LOGIN_REQUIRED,
@@ -187,21 +188,19 @@ def _hub_admin_display_name(user) -> str:
     return full or user.username
 
 
-def _hub_admin_monitor_actor(*, email=None, username=None) -> MonitorActor | None:
+def _hub_admin_monitor_actor(*, email=None) -> MonitorActor | None:
     from django.contrib.auth import get_user_model
     from django.db.models import Q
 
-    qs = (
+    if not email:
+        return None
+    user = (
         get_user_model()
         .objects.filter(is_active=True)
         .filter(Q(is_staff=True) | Q(is_superuser=True))
+        .filter(email__iexact=email)
+        .first()
     )
-    if email:
-        user = qs.filter(email__iexact=email).first()
-    elif username:
-        user = qs.filter(username__iexact=username).first()
-    else:
-        return None
     if not user:
         return None
     company = _company_for_hub_admin(user)
@@ -705,32 +704,25 @@ def consume_email_change_otp(*, email, otp, user=None, operator=None) -> EmailCh
 
 
 def consume_monitor_password(*, email, password) -> MonitorActor:
-    identifier = (email or "").strip()
+    email = (email or "").strip()
     password = (password or "").strip()
-    if not identifier or not password:
+    if not email or not password:
         raise ValueError(MONITOR_LOGIN_REQUIRED)
-    if "@" in identifier:
-        identifier = identifier.lower()
-        try:
-            validate_email(identifier)
-        except DjangoValidationError:
-            raise ValueError("El correo no es válido.") from None
-        operator = (
-            Operator.objects.filter(email__iexact=identifier)
-            .select_related("user", "company")
-            .first()
-        )
-        if operator:
-            if not operator.user.is_active or not operator.check_password(password):
-                raise ValueError(MONITOR_CREDENTIALS_ERROR)
-            return MonitorActor.from_operator(operator)
-        admin = _hub_admin_monitor_actor(email=identifier)
-        if admin and admin.check_password(password):
-            return admin
-        raise ValueError(MONITOR_CREDENTIALS_ERROR)
-    if not is_valid_username(identifier):
-        raise ValueError("El correo no es válido.")
-    admin = _hub_admin_monitor_actor(username=identifier)
+    email = email.lower()
+    try:
+        validate_email(email)
+    except DjangoValidationError:
+        raise ValueError(EMAIL_INVALID) from None
+    operator = (
+        Operator.objects.filter(email__iexact=email)
+        .select_related("user", "company")
+        .first()
+    )
+    if operator:
+        if not operator.user.is_active or not operator.check_password(password):
+            raise ValueError(MONITOR_CREDENTIALS_ERROR)
+        return MonitorActor.from_operator(operator)
+    admin = _hub_admin_monitor_actor(email=email)
     if admin and admin.check_password(password):
         return admin
     raise ValueError(MONITOR_CREDENTIALS_ERROR)

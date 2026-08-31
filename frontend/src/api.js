@@ -39,10 +39,10 @@ export function fetchMe() {
   return request("/api/auth/me/");
 }
 
-export function login(username, password) {
+export function login(email, password) {
   return request("/api/auth/login/", {
     method: "POST",
-    body: JSON.stringify({ username, password }),
+    body: JSON.stringify({ email, password }),
   });
 }
 
