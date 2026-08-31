@@ -37,7 +37,7 @@ from .models import (
     System,
 )
 from .notify import beat_payload, notify_company_beat
-from .tokens import issue_operator_jwt, issue_system_jwt
+from .tokens import issue_monitor_jwt, issue_system_jwt
 from .otp import (
     activate_operator_password,
     consume_email_change_otp,
@@ -591,29 +591,34 @@ def monitor_request_otp(request):
     return Response(result)
 
 
-def monitor_session_payload(operator, *, with_token=True):
+def monitor_session_payload(actor, *, with_token=True):
     data = {
+        "role": actor.role,
         "operator": {
-            "id": operator.id,
-            "display_name": operator.display_name(),
-            "first_name": operator.first_name,
-            "last_name": operator.last_name,
-            "email": operator.email,
-            "has_password": operator.has_password(),
+            "id": actor.id,
+            "display_name": actor.display_name(),
+            "first_name": actor.first_name,
+            "last_name": actor.last_name,
+            "email": actor.email,
+            "has_password": actor.has_password(),
         },
         "company": {
-            "id": operator.company_id,
-            "name": operator.company.name,
+            "id": actor.company_id,
+            "name": actor.company.name,
         },
     }
     if with_token:
-        data["token"] = issue_operator_jwt(operator)
+        data["token"] = issue_monitor_jwt(actor)
     return data
 
 
-def _mark_operator_login(operator):
-    operator.last_login_at = timezone.now()
-    operator.save(update_fields=["last_login_at"])
+def _mark_monitor_login(actor):
+    if actor.operator is not None:
+        actor.operator.last_login_at = timezone.now()
+        actor.operator.save(update_fields=["last_login_at"])
+        return
+    actor.user.last_login = timezone.now()
+    actor.user.save(update_fields=["last_login"])
 
 
 @api_view(["POST"])
@@ -621,14 +626,14 @@ def _mark_operator_login(operator):
 @permission_classes([AllowAny])
 def monitor_verify_otp(request):
     try:
-        operator = consume_monitor_otp(
+        actor = consume_monitor_otp(
             email=request.data.get("email"),
             otp=request.data.get("otp"),
         )
     except ValueError as exc:
         return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-    _mark_operator_login(operator)
-    return Response(monitor_session_payload(operator))
+    _mark_monitor_login(actor)
+    return Response(monitor_session_payload(actor))
 
 
 @api_view(["POST"])
@@ -636,61 +641,94 @@ def monitor_verify_otp(request):
 @permission_classes([AllowAny])
 def monitor_login(request):
     try:
-        operator = consume_monitor_password(
+        actor = consume_monitor_password(
             email=request.data.get("email"),
             password=request.data.get("password"),
         )
     except ValueError as exc:
         return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-    _mark_operator_login(operator)
-    return Response(monitor_session_payload(operator))
+    _mark_monitor_login(actor)
+    return Response(monitor_session_payload(actor))
 
 
 @api_view(["GET", "PATCH"])
 @authentication_classes([OperatorTokenAuthentication])
 @permission_classes([IsOperatorToken])
 def monitor_me(request):
-    operator = request.auth
+    actor = request.auth
     if request.method != "PATCH":
-        return Response(monitor_session_payload(operator, with_token=False))
+        return Response(monitor_session_payload(actor, with_token=False))
+    operator = actor.operator
+    if operator is not None:
+        try:
+            first_name, last_name, email = validate_profile_fields(
+                first_name=request.data.get("first_name", operator.first_name),
+                last_name=request.data.get("last_name", operator.last_name),
+                email=request.data.get("email", operator.email),
+                exclude_operator_id=operator.pk,
+            )
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        email_changed = (operator.email or "").strip().lower() != email
+        operator.first_name = first_name
+        operator.last_name = last_name
+        try:
+            operator.save(update_fields=["first_name", "last_name"])
+        except IntegrityError:
+            return Response(
+                {"detail": OPERATOR_EMAIL_TAKEN},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        user = operator.user
+        if user:
+            user.first_name = first_name
+            user.last_name = last_name
+            user.save(update_fields=["first_name", "last_name"])
+        if not email_changed:
+            EmailChangeChallenge.objects.filter(operator=operator).delete()
+            payload = monitor_session_payload(actor, with_token=False)
+            payload["detail"] = PROFILE_UPDATED
+            return Response(payload)
+        try:
+            result = issue_email_change_otp(
+                email=email,
+                name=first_name or operator.display_name(),
+                operator=operator,
+            )
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        payload = monitor_session_payload(actor, with_token=False)
+        payload.update(result)
+        return Response(payload)
+
+    user = actor.user
     try:
         first_name, last_name, email = validate_profile_fields(
-            first_name=request.data.get("first_name", operator.first_name),
-            last_name=request.data.get("last_name", operator.last_name),
-            email=request.data.get("email", operator.email),
-            exclude_operator_id=operator.pk,
+            first_name=request.data.get("first_name", user.first_name),
+            last_name=request.data.get("last_name", user.last_name),
+            email=request.data.get("email", user.email),
+            exclude_user_id=user.pk,
         )
     except ValueError as exc:
         return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-    email_changed = (operator.email or "").strip().lower() != email
-    operator.first_name = first_name
-    operator.last_name = last_name
-    try:
-        operator.save(update_fields=["first_name", "last_name"])
-    except IntegrityError:
-        return Response(
-            {"detail": OPERATOR_EMAIL_TAKEN},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-    user = operator.user
-    if user:
-        user.first_name = first_name
-        user.last_name = last_name
-        user.save(update_fields=["first_name", "last_name"])
+    email_changed = (user.email or "").strip().lower() != email
+    user.first_name = first_name
+    user.last_name = last_name
+    user.save(update_fields=["first_name", "last_name"])
     if not email_changed:
-        EmailChangeChallenge.objects.filter(operator=operator).delete()
-        payload = monitor_session_payload(operator, with_token=False)
+        EmailChangeChallenge.objects.filter(user=user, operator__isnull=True).delete()
+        payload = monitor_session_payload(actor, with_token=False)
         payload["detail"] = PROFILE_UPDATED
         return Response(payload)
     try:
         result = issue_email_change_otp(
             email=email,
-            name=first_name or operator.display_name(),
-            operator=operator,
+            name=first_name or actor.display_name(),
+            user=user,
         )
     except ValueError as exc:
         return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-    payload = monitor_session_payload(operator, with_token=False)
+    payload = monitor_session_payload(actor, with_token=False)
     payload.update(result)
     return Response(payload)
 
@@ -699,31 +737,57 @@ def monitor_me(request):
 @authentication_classes([OperatorTokenAuthentication])
 @permission_classes([IsOperatorToken])
 def monitor_verify_email(request):
-    operator = request.auth
+    actor = request.auth
+    operator = actor.operator
+    if operator is not None:
+        try:
+            challenge = consume_email_change_otp(
+                email=request.data.get("email"),
+                otp=request.data.get("otp"),
+                operator=operator,
+            )
+            assert_email_available(challenge.email, exclude_operator_id=operator.pk)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        operator.email = challenge.email
+        try:
+            with transaction.atomic():
+                operator.save(update_fields=["email"])
+                user = operator.user
+                if user:
+                    user.email = challenge.email
+                    user.save(update_fields=["email"])
+                challenge.delete()
+        except IntegrityError:
+            return Response(
+                {"detail": OPERATOR_EMAIL_TAKEN},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        payload = monitor_session_payload(actor, with_token=False)
+        payload["detail"] = PROFILE_UPDATED
+        return Response(payload)
+
+    user = actor.user
     try:
         challenge = consume_email_change_otp(
             email=request.data.get("email"),
             otp=request.data.get("otp"),
-            operator=operator,
+            user=user,
         )
-        assert_email_available(challenge.email, exclude_operator_id=operator.pk)
+        assert_email_available(challenge.email, exclude_user_id=user.pk)
     except ValueError as exc:
         return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-    operator.email = challenge.email
+    user.email = challenge.email
     try:
         with transaction.atomic():
-            operator.save(update_fields=["email"])
-            user = operator.user
-            if user:
-                user.email = challenge.email
-                user.save(update_fields=["email"])
+            user.save(update_fields=["email"])
             challenge.delete()
     except IntegrityError:
         return Response(
-            {"detail": OPERATOR_EMAIL_TAKEN},
+            {"detail": HUB_EMAIL_TAKEN},
             status=status.HTTP_400_BAD_REQUEST,
         )
-    payload = monitor_session_payload(operator, with_token=False)
+    payload = monitor_session_payload(actor, with_token=False)
     payload["detail"] = PROFILE_UPDATED
     return Response(payload)
 
@@ -732,8 +796,8 @@ def monitor_verify_email(request):
 @authentication_classes([OperatorTokenAuthentication])
 @permission_classes([IsOperatorToken])
 def monitor_password(request):
-    operator = request.auth
-    had_password = operator.has_password()
+    actor = request.auth
+    had_password = actor.has_password()
     if had_password:
         current = (request.data.get("current_password") or "").strip()
         if not current:
@@ -741,7 +805,7 @@ def monitor_password(request):
                 {"detail": PASSWORD_CHANGE_REQUIRED},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        if not operator.check_password(current):
+        if not actor.check_password(current):
             return Response(
                 {"detail": CURRENT_PASSWORD_ERROR},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -750,12 +814,12 @@ def monitor_password(request):
         new_password = validate_new_password(
             request.data.get("password"),
             request.data.get("password2"),
-            user=operator.user,
+            user=actor.user,
         )
     except ValueError as exc:
         return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-    operator.set_password(new_password)
-    operator.save(update_fields=["password_hash"])
+    actor.set_password(new_password)
+    actor.save_password()
     return Response(
         {
             "ok": True,
@@ -769,9 +833,9 @@ def monitor_password(request):
 @authentication_classes([OperatorTokenAuthentication])
 @permission_classes([IsOperatorToken])
 def monitor_beats(request):
-    operator = request.auth
+    actor = request.auth
     beats = (
-        Beat.objects.filter(company=operator.company)
+        Beat.objects.filter(company=actor.company)
         .select_related("system", "beat_type")[:100]
     )
     return Response([beat_payload(beat) for beat in beats])

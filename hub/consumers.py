@@ -4,18 +4,18 @@ from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 
 from .notify import company_group
-from .tokens import verify_operator_token
+from .tokens import verify_monitor_token
 
 
 class MonitorConsumer(AsyncJsonWebsocketConsumer):
     async def connect(self):
         qs = parse_qs((self.scope.get("query_string") or b"").decode())
         token = (qs.get("token") or [""])[0]
-        operator = await database_sync_to_async(verify_operator_token)(token)
-        if operator is None:
+        actor = await database_sync_to_async(verify_monitor_token)(token)
+        if actor is None:
             await self.close(code=4401)
             return
-        self.group_name = company_group(operator.company_id)
+        self.group_name = company_group(actor.company_id)
         await self.channel_layer.group_add(self.group_name, self.channel_name)
         await self.accept()
         await self.send_json({"type": "ready"})

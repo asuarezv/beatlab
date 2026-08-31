@@ -28,6 +28,7 @@ from .models import (
     OperatorOtpChallenge,
     SignupChallenge,
 )
+from .tokens import MonitorActor
 from .validation import (
     COMPANY_NAME_ERROR,
     EMAIL_CHANGE_SENT,
@@ -169,6 +170,46 @@ def _hub_admin_for_email(email: str):
     )
 
 
+def _company_for_hub_admin(user):
+    from .models import Membership
+
+    membership = (
+        Membership.objects.filter(user=user)
+        .select_related("company")
+        .order_by("id")
+        .first()
+    )
+    return membership.company if membership else None
+
+
+def _hub_admin_display_name(user) -> str:
+    full = f"{user.first_name} {user.last_name}".strip()
+    return full or user.username
+
+
+def _hub_admin_monitor_actor(*, email=None, username=None) -> MonitorActor | None:
+    from django.contrib.auth import get_user_model
+    from django.db.models import Q
+
+    qs = (
+        get_user_model()
+        .objects.filter(is_active=True)
+        .filter(Q(is_staff=True) | Q(is_superuser=True))
+    )
+    if email:
+        user = qs.filter(email__iexact=email).first()
+    elif username:
+        user = qs.filter(username__iexact=username).first()
+    else:
+        return None
+    if not user:
+        return None
+    company = _company_for_hub_admin(user)
+    if not company:
+        return None
+    return MonitorActor.from_admin(user, company)
+
+
 def issue_monitor_otp(*, email) -> dict:
     email = (email or "").strip().lower()
     ttl = _ttl()
@@ -184,10 +225,15 @@ def issue_monitor_otp(*, email) -> dict:
         .select_related("user")
         .first()
     )
-    if not operator or not operator.user.is_active:
-        if _hub_admin_for_email(email):
-            raise ValueError(HUB_ACCOUNT_ON_MONITOR)
-        return _monitor_generic(email, ttl)
+    admin = None
+    recipient_name = ""
+    if operator and operator.user.is_active:
+        recipient_name = operator.display_name()
+    else:
+        admin = _hub_admin_monitor_actor(email=email)
+        if not admin:
+            return _monitor_generic(email, ttl)
+        recipient_name = _hub_admin_display_name(admin.user)
 
     otp = _new_otp()
     OperatorOtpChallenge.objects.filter(email=email).delete()
@@ -197,7 +243,7 @@ def issue_monitor_otp(*, email) -> dict:
         expires_at=timezone.now() + timedelta(seconds=ttl),
     )
     try:
-        send_monitor_otp(email, operator.display_name(), otp, ttl)
+        send_monitor_otp(email, recipient_name, otp, ttl)
     except Exception:
         OperatorOtpChallenge.objects.filter(email=email).delete()
         logger.exception("No se pudo enviar el OTP de Monitor a %s", email)
@@ -562,13 +608,9 @@ def issue_operator_recover_otp(*, email) -> dict:
     }
 
 
-def consume_monitor_otp(*, email, otp) -> Operator:
+def consume_monitor_otp(*, email, otp) -> MonitorActor:
     email = (email or "").strip().lower()
     otp = (otp or "").strip()
-    if _hub_admin_for_email(email) and not Operator.objects.filter(
-        email__iexact=email
-    ).exists():
-        raise ValueError(HUB_ACCOUNT_ON_MONITOR)
     challenge = OperatorOtpChallenge.objects.filter(email=email).first()
     if not challenge:
         raise ValueError("Solicita un código nuevo.")
@@ -587,10 +629,14 @@ def consume_monitor_otp(*, email, otp) -> Operator:
         .select_related("user", "company")
         .first()
     )
+    if operator and operator.user.is_active:
+        challenge.delete()
+        return MonitorActor.from_operator(operator)
+    admin = _hub_admin_monitor_actor(email=email)
     challenge.delete()
-    if not operator or not operator.user.is_active:
-        raise ValueError("Solicita un código nuevo.")
-    return operator
+    if admin:
+        return admin
+    raise ValueError("Solicita un código nuevo.")
 
 
 def issue_email_change_otp(*, email, name, user=None, operator=None) -> dict:
@@ -658,24 +704,33 @@ def consume_email_change_otp(*, email, otp, user=None, operator=None) -> EmailCh
     return challenge
 
 
-def consume_monitor_password(*, email, password) -> Operator:
-    email = (email or "").strip().lower()
+def consume_monitor_password(*, email, password) -> MonitorActor:
+    identifier = (email or "").strip()
     password = (password or "").strip()
-    if not email or not password:
+    if not identifier or not password:
         raise ValueError(MONITOR_LOGIN_REQUIRED)
-    try:
-        validate_email(email)
-    except DjangoValidationError:
-        raise ValueError("El correo no es válido.") from None
-    operator = (
-        Operator.objects.filter(email__iexact=email)
-        .select_related("user", "company")
-        .first()
-    )
-    if not operator or not operator.user.is_active:
-        if _hub_admin_for_email(email):
-            raise ValueError(HUB_ACCOUNT_ON_MONITOR)
+    if "@" in identifier:
+        identifier = identifier.lower()
+        try:
+            validate_email(identifier)
+        except DjangoValidationError:
+            raise ValueError("El correo no es válido.") from None
+        operator = (
+            Operator.objects.filter(email__iexact=identifier)
+            .select_related("user", "company")
+            .first()
+        )
+        if operator:
+            if not operator.user.is_active or not operator.check_password(password):
+                raise ValueError(MONITOR_CREDENTIALS_ERROR)
+            return MonitorActor.from_operator(operator)
+        admin = _hub_admin_monitor_actor(email=identifier)
+        if admin and admin.check_password(password):
+            return admin
         raise ValueError(MONITOR_CREDENTIALS_ERROR)
-    if not operator.check_password(password):
-        raise ValueError(MONITOR_CREDENTIALS_ERROR)
-    return operator
+    if not is_valid_username(identifier):
+        raise ValueError("El correo no es válido.")
+    admin = _hub_admin_monitor_actor(username=identifier)
+    if admin and admin.check_password(password):
+        return admin
+    raise ValueError(MONITOR_CREDENTIALS_ERROR)

@@ -3,8 +3,8 @@ from rest_framework.authentication import BaseAuthentication
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.permissions import BasePermission
 
-from .models import Operator, System
-from .tokens import verify_operator_token, verify_system_jwt
+from .models import System
+from .tokens import MonitorActor, verify_monitor_token, verify_system_jwt
 
 
 def _bearer(request) -> str:
@@ -33,10 +33,10 @@ class OperatorTokenAuthentication(BaseAuthentication):
         token = _bearer(request)
         if not token:
             raise AuthenticationFailed("Falta el token del Operator.")
-        operator = verify_operator_token(token)
-        if operator is None:
+        actor = verify_monitor_token(token)
+        if actor is None:
             raise AuthenticationFailed("Token inválido o vencido.")
-        return (operator.user, operator)
+        return (actor.user, actor)
 
     def authenticate_header(self, request):
         return "Bearer"
@@ -49,4 +49,4 @@ class IsSystemJWT(BasePermission):
 
 class IsOperatorToken(BasePermission):
     def has_permission(self, request, view):
-        return isinstance(request.auth, Operator)
+        return isinstance(request.auth, MonitorActor)

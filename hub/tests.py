@@ -16,10 +16,9 @@ from .models import (
 )
 from .quota import grant_demo
 from .tenant import ensure_membership
-from .tokens import issue_operator_jwt, issue_system_jwt
+from .tokens import MonitorActor, issue_monitor_jwt, issue_operator_jwt, issue_system_jwt
 from .validation import (
     CURRENT_PASSWORD_ERROR,
-    HUB_ACCOUNT_ON_MONITOR,
     MONITOR_CREDENTIALS_ERROR,
     MONITOR_LOGIN_REQUIRED,
     OPERATOR_ACCOUNT_ON_HUB,
@@ -200,6 +199,7 @@ class IngestAndMonitorTests(APITestCase):
             format="json",
         )
         self.assertEqual(login.status_code, 200)
+        self.assertEqual(login.data["role"], "operator")
         self.assertEqual(login.data["operator"]["display_name"], "Ana Pérez")
         self.operator.refresh_from_db()
         self.assertIsNotNone(self.operator.last_login_at)
@@ -620,29 +620,47 @@ class IngestAndMonitorTests(APITestCase):
         self.assertEqual(unknown.status_code, 400)
         self.assertEqual(unknown.json()["detail"], "Usuario o contraseña no válidos")
 
-    def test_monitor_otp_rejects_hub_admin(self):
-        asked = self.client.post(
-            "/api/monitor/auth/request-otp/",
-            {"email": "hubadmin@labbe.test"},
-            format="json",
-        )
-        self.assertEqual(asked.status_code, 400)
-        self.assertEqual(asked.data["detail"], HUB_ACCOUNT_ON_MONITOR)
-        self.assertEqual(len(mail.outbox), 0)
+    def test_monitor_otp_allows_hub_admin(self):
+        self._ingest()
         unknown = self.client.post(
             "/api/monitor/auth/request-otp/",
             {"email": "nadie@labbe.test"},
             format="json",
         )
         self.assertEqual(unknown.status_code, 200)
-        self.assertNotEqual(unknown.data["detail"], HUB_ACCOUNT_ON_MONITOR)
+        self.assertEqual(len(mail.outbox), 0)
+        with patch("hub.otp.secrets.choice", return_value="3"):
+            asked = self.client.post(
+                "/api/monitor/auth/request-otp/",
+                {"email": "hubadmin@labbe.test"},
+                format="json",
+            )
+        self.assertEqual(asked.status_code, 200)
+        self.assertEqual(asked.data["detail"], unknown.data["detail"])
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].subject, "Tu código Monitor")
+        self.assertEqual(mail.outbox[0].to, ["hubadmin@labbe.test"])
         verified = self.client.post(
             "/api/monitor/auth/verify-otp/",
-            {"email": "hubadmin@labbe.test", "otp": "000000"},
+            {"email": "hubadmin@labbe.test", "otp": "333333"},
             format="json",
         )
-        self.assertEqual(verified.status_code, 400)
-        self.assertEqual(verified.data["detail"], HUB_ACCOUNT_ON_MONITOR)
+        self.assertEqual(verified.status_code, 200)
+        self.assertEqual(verified.data["role"], "admin")
+        self.assertEqual(verified.data["company"]["id"], self.company.id)
+        self.assertEqual(verified.data["operator"]["email"], "hubadmin@labbe.test")
+        self.assertTrue(verified.data["token"])
+        self.assertFalse(
+            Operator.objects.filter(email__iexact="hubadmin@labbe.test").exists()
+        )
+        self.assertFalse(Operator.objects.filter(user=self.staff).exists())
+        beats = self.client.get(
+            "/api/monitor/beats/",
+            HTTP_AUTHORIZATION=f"Bearer {verified.data['token']}",
+        )
+        self.assertEqual(beats.status_code, 200)
+        self.assertEqual(len(beats.data), 1)
+        self.assertEqual(beats.data[0]["title"], "Cola recuperada")
 
     def _operator_token(self):
         return issue_operator_jwt(self.operator)
@@ -744,13 +762,38 @@ class IngestAndMonitorTests(APITestCase):
         self.assertTrue(login.data["token"])
         self.assertTrue(login.data["operator"]["has_password"])
         self.assertEqual(login.data["operator"]["display_name"], "Ana Pérez")
+        self.assertEqual(login.data["role"], "operator")
         hub_admin = self.client.post(
             "/api/monitor/auth/login/",
             {"email": "hubadmin@labbe.test", "password": "password12"},
             format="json",
         )
-        self.assertEqual(hub_admin.status_code, 400)
-        self.assertEqual(hub_admin.data["detail"], HUB_ACCOUNT_ON_MONITOR)
+        self.assertEqual(hub_admin.status_code, 200)
+        self.assertEqual(hub_admin.data["role"], "admin")
+        self.assertEqual(hub_admin.data["company"]["id"], self.company.id)
+        self.assertEqual(hub_admin.data["operator"]["email"], "hubadmin@labbe.test")
+        self.assertTrue(hub_admin.data["operator"]["has_password"])
+        self.assertTrue(hub_admin.data["token"])
+        self.assertFalse(Operator.objects.filter(user=self.staff).exists())
+        by_username = self.client.post(
+            "/api/monitor/auth/login/",
+            {"email": "hubadmin", "password": "password12"},
+            format="json",
+        )
+        self.assertEqual(by_username.status_code, 200)
+        self.assertEqual(by_username.data["role"], "admin")
+        wrong_admin = self.client.post(
+            "/api/monitor/auth/login/",
+            {"email": "hubadmin@labbe.test", "password": "no-es-esa"},
+            format="json",
+        )
+        self.assertEqual(wrong_admin.status_code, 400)
+        self.assertEqual(wrong_admin.data["detail"], MONITOR_CREDENTIALS_ERROR)
+        admin_beats = self.client.get(
+            "/api/monitor/beats/",
+            HTTP_AUTHORIZATION=f"Bearer {hub_admin.data['token']}",
+        )
+        self.assertEqual(admin_beats.status_code, 200)
         with patch("hub.otp.secrets.choice", return_value="2"):
             asked = self.client.post(
                 "/api/monitor/auth/request-otp/",
@@ -782,6 +825,21 @@ class IngestAndMonitorTests(APITestCase):
         from config.asgi import application
 
         token = issue_operator_jwt(self.operator)
+        communicator = WebsocketCommunicator(
+            application, f"/ws/monitor/?token={token}"
+        )
+        connected, _ = await communicator.connect()
+        self.assertTrue(connected)
+        hello = await communicator.receive_json_from()
+        self.assertEqual(hello.get("type"), "ready")
+        await communicator.disconnect()
+
+    async def test_monitor_websocket_accepts_hub_admin(self):
+        from channels.testing import WebsocketCommunicator
+
+        from config.asgi import application
+
+        token = issue_monitor_jwt(MonitorActor.from_admin(self.staff, self.company))
         communicator = WebsocketCommunicator(
             application, f"/ws/monitor/?token={token}"
         )

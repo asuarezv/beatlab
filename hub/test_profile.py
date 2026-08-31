@@ -7,12 +7,15 @@ from rest_framework.test import APITestCase
 from .models import Company, EmailChangeChallenge, Operator
 from .quota import grant_demo
 from .tenant import ensure_membership
-from .tokens import issue_operator_jwt
+from .tokens import MonitorActor, issue_monitor_jwt, issue_operator_jwt
 from .validation import (
+    CURRENT_PASSWORD_ERROR,
     EMAIL_CHANGE_SENT,
     EMAIL_INVALID,
     HUB_EMAIL_TAKEN,
     OPERATOR_EMAIL_TAKEN,
+    PASSWORD_CHANGE_REQUIRED,
+    PASSWORD_UPDATED,
     PERSON_NAME_ERROR,
     PROFILE_UPDATED,
 )
@@ -489,3 +492,119 @@ class MonitorProfileTests(APITestCase):
         )
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.data["detail"], HUB_EMAIL_TAKEN)
+
+
+class MonitorAdminProfileTests(APITestCase):
+    def setUp(self):
+        self.company = Company.objects.create(name="Labbe 2", slug="labbe-2")
+        grant_demo(self.company)
+        self.staff = User.objects.create_user(
+            username="hubadmin",
+            email="hubadmin@labbe.test",
+            password="password12",
+            first_name="Hugo",
+            last_name="Admin",
+            is_staff=True,
+        )
+        ensure_membership(self.staff, self.company)
+        self.op_user = User.objects.create_user(
+            username="opdemo",
+            email="op@labbe.test",
+            password="password12",
+        )
+        self.operator = Operator.objects.create(
+            company=self.company,
+            user=self.op_user,
+            first_name="Ana",
+            last_name="Pérez",
+            email="op@labbe.test",
+        )
+
+    def _auth(self):
+        return (
+            f"Bearer {issue_monitor_jwt(MonitorActor.from_admin(self.staff, self.company))}"
+        )
+
+    def test_admin_profile_updates_hub_user_not_operator(self):
+        with patch("hub.otp.secrets.choice", return_value="8"):
+            response = self.client.patch(
+                "/api/monitor/auth/me/",
+                {
+                    "first_name": "Hugo",
+                    "last_name": "García",
+                    "email": "hugo@labbe.test",
+                },
+                format="json",
+                HTTP_AUTHORIZATION=self._auth(),
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["detail"], EMAIL_CHANGE_SENT)
+        self.assertEqual(response.data["role"], "admin")
+        self.assertEqual(response.data["pending_email"], "hugo@labbe.test")
+        self.assertEqual(response.data["operator"]["email"], "hubadmin@labbe.test")
+        self.assertEqual(response.data["operator"]["last_name"], "García")
+        self.staff.refresh_from_db()
+        self.assertEqual(self.staff.first_name, "Hugo")
+        self.assertEqual(self.staff.last_name, "García")
+        self.assertEqual(self.staff.email, "hubadmin@labbe.test")
+        self.assertFalse(Operator.objects.filter(user=self.staff).exists())
+        confirmed = self.client.post(
+            "/api/monitor/auth/verify-email/",
+            {"email": "hugo@labbe.test", "otp": "888888"},
+            format="json",
+            HTTP_AUTHORIZATION=self._auth(),
+        )
+        self.assertEqual(confirmed.status_code, 200)
+        self.assertEqual(confirmed.data["detail"], PROFILE_UPDATED)
+        self.assertEqual(confirmed.data["operator"]["email"], "hugo@labbe.test")
+        self.staff.refresh_from_db()
+        self.assertEqual(self.staff.email, "hugo@labbe.test")
+        self.assertFalse(Operator.objects.filter(email="hugo@labbe.test").exists())
+        self.operator.refresh_from_db()
+        self.assertEqual(self.operator.email, "op@labbe.test")
+
+    def test_admin_password_updates_django_user(self):
+        token = self._auth()
+        missing = self.client.post(
+            "/api/monitor/auth/password/",
+            {"password": "NuevaClave99", "password2": "NuevaClave99"},
+            format="json",
+            HTTP_AUTHORIZATION=token,
+        )
+        self.assertEqual(missing.status_code, 400)
+        self.assertEqual(missing.data["detail"], PASSWORD_CHANGE_REQUIRED)
+        wrong = self.client.post(
+            "/api/monitor/auth/password/",
+            {
+                "current_password": "no-es-esa",
+                "password": "NuevaClave99",
+                "password2": "NuevaClave99",
+            },
+            format="json",
+            HTTP_AUTHORIZATION=token,
+        )
+        self.assertEqual(wrong.status_code, 400)
+        self.assertEqual(wrong.data["detail"], CURRENT_PASSWORD_ERROR)
+        updated = self.client.post(
+            "/api/monitor/auth/password/",
+            {
+                "current_password": "password12",
+                "password": "NuevaClave99",
+                "password2": "NuevaClave99",
+            },
+            format="json",
+            HTTP_AUTHORIZATION=token,
+        )
+        self.assertEqual(updated.status_code, 200)
+        self.assertEqual(updated.data["detail"], PASSWORD_UPDATED)
+        self.staff.refresh_from_db()
+        self.assertTrue(self.staff.check_password("NuevaClave99"))
+        self.assertFalse(self.staff.check_password("password12"))
+        self.assertFalse(Operator.objects.filter(user=self.staff).exists())
+        login = self.client.post(
+            "/api/monitor/auth/login/",
+            {"email": "hubadmin@labbe.test", "password": "NuevaClave99"},
+            format="json",
+        )
+        self.assertEqual(login.status_code, 200)
+        self.assertEqual(login.data["role"], "admin")

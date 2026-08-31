@@ -22,6 +22,7 @@ import OtpInput from "../components/OtpInput";
 import PasswordField from "../components/PasswordField";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const USERNAME_RE = /^[A-Za-z0-9]+$/;
 
 export default function LoginScreen({ onLogin }) {
   const [email, setEmail] = useState("");
@@ -41,16 +42,19 @@ export default function LoginScreen({ onLogin }) {
     });
   }
 
-  function validEmail(nextEmail) {
+  function validEmail(nextEmail, { forOtp = false } = {}) {
     if (!nextEmail) {
       setError("El correo es obligatorio.");
       return false;
     }
-    if (!EMAIL_RE.test(nextEmail)) {
-      setError("El correo no es válido.");
-      return false;
+    if (EMAIL_RE.test(nextEmail)) {
+      return true;
     }
-    return true;
+    if (!forOtp && USERNAME_RE.test(nextEmail)) {
+      return true;
+    }
+    setError(forOtp ? "El correo no es válido." : "El correo o el usuario no es válido.");
+    return false;
   }
 
   async function handlePasswordLogin() {
@@ -79,7 +83,7 @@ export default function LoginScreen({ onLogin }) {
   async function handleRequest() {
     const nextEmail = email.trim();
     setEmail(nextEmail);
-    if (!validEmail(nextEmail)) {
+    if (!validEmail(nextEmail, { forOtp: true })) {
       return;
     }
     setError("");
@@ -142,7 +146,7 @@ export default function LoginScreen({ onLogin }) {
               Entra con tu correo y contraseña, o te enviamos un código de 6
               dígitos.
             </Text>
-            <Text style={styles.label}>Correo</Text>
+            <Text style={styles.label}>Correo o usuario</Text>
             <TextInput
               style={styles.input}
               value={email}
